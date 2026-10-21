@@ -2,8 +2,7 @@
 
 **Toutes les radios françaises en direct, sur ton smartphone, sans publicité.**
 Une web-app pensée pour remplacer l'autoradio : grands logos, gros boutons, lecture écran verrouillé.
-
-👉 **[lenivin33.github.io/ondes-radio](https://lenivin33.github.io/ondes-radio/)**
+Aucune version publique n'est proposée : chacun héberge sa propre copie, gratuitement (voir [Héberger ta copie](#héberger-ta-copie)).
 
 ---
 
@@ -19,17 +18,31 @@ Une web-app pensée pour remplacer l'autoradio : grands logos, gros boutons, lec
 - **Reconnexion automatique** après un tunnel ou une perte de réseau, avec bascule sur un flux de secours si nécessaire.
 - **Aucune publicité, aucun compte, aucun suivi.** Les favoris restent sur ton téléphone.
 
-## Installation
+## Héberger ta copie
+
+L'app tient dans des fichiers statiques, sans serveur ni base de données. Elle doit être servie en **https**.
+
+**Option 1 : GitHub Pages (gratuit)**
+1. Clique sur **Fork** en haut de cette page pour copier le dépôt sur ton compte.
+2. Dans ton fork, va dans **Settings → Pages**.
+3. Dans « Source », choisis **Deploy from a branch**, puis la branche **main** et le dossier **/ (root)**. Clique sur **Save**.
+4. Après une à deux minutes, l'adresse de ton site s'affiche en haut de cette même page.
+
+**Option 2 : autre hébergeur**
+1. Télécharge le projet : bouton **Code → Download ZIP**.
+2. Décompresse-le et dépose le dossier sur n'importe quel hébergement statique en https (Netlify, Cloudflare Pages, Vercel, ton propre serveur…).
+
+## Installation sur le téléphone
 
 Aucune boutique d'applications n'est nécessaire.
 
 **iPhone (Safari)**
-1. Ouvre [lenivin33.github.io/ondes-radio](https://lenivin33.github.io/ondes-radio/) dans **Safari**.
+1. Ouvre l'adresse de ta copie dans **Safari**.
 2. Touche **Partager**, puis **Sur l'écran d'accueil**.
 3. Laisse l'option « Ouvrir en tant qu'app web » activée, puis touche **Ajouter**.
 
 **Android (Chrome)**
-1. Ouvre le lien dans **Chrome**.
+1. Ouvre l'adresse de ta copie dans **Chrome**.
 2. Ouvre le menu **⋮**, puis touche **Ajouter à l'écran d'accueil** (ou **Installer l'application**).
 
 ## Qualité audio
@@ -65,11 +78,6 @@ Les stations proviennent de [Radio Browser](https://www.radio-browser.info), un 
 
 Après toute modification de `index.html`, lance `python3 build-app.py` pour mettre `app/` à jour.
 
-## Hébergement
+## Mettre à jour ta copie
 
-Le site est publié gratuitement par GitHub Pages depuis la branche `gh-pages`. Pour publier une nouvelle version, pousse les changements sur `main`, puis sur `gh-pages` :
-
-```bash
-git push origin main
-git push origin main:gh-pages
-```
+Après toute modification, publie de nouveau les fichiers. Avec GitHub Pages, il suffit de pousser sur la branche choisie dans **Settings → Pages**.

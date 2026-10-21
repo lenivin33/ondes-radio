@@ -1,10 +1,14 @@
 name: Liste des radios
 
 # Chaque lundi à 4 h (UTC), régénère stations.json depuis l'annuaire Radio Browser.
+# Le site est publié depuis la branche gh-pages : après chaque mise à jour de main
+# (liste de la semaine ou modification poussée), gh-pages est alignée sur main.
 on:
   schedule:
     - cron: '0 4 * * 1'
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: write
@@ -19,12 +23,17 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
+        if: github.event_name != 'push'
         with:
           node-version: 20
       - name: Générer stations.json
+        if: github.event_name != 'push'
         run: node tools/build-stations.cjs
-      - name: Publier si la liste a changé
+      - name: Publier la liste sur main si elle a changé
+        if: github.event_name != 'push'
         run: |
           if git diff --quiet -- stations.json; then
             echo "Liste inchangée"
@@ -34,4 +43,7 @@ jobs:
           git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
           git add stations.json
           git commit -m "Liste des radios : mise à jour hebdomadaire"
-          git push
+          git push origin HEAD:main
+      # Sans --force : si gh-pages contient des modifications absentes de main, l'étape échoue au lieu de les effacer.
+      - name: Aligner gh-pages sur main
+        run: git push origin HEAD:refs/heads/gh-pages

@@ -75,7 +75,7 @@ Les stations proviennent de [Radio Browser](https://www.radio-browser.info), un 
 | `stations-core.js` | Traitement de l'annuaire (regroupement des doublons, choix des flux), partagé par l'app et le script de la liste |
 | `stations.json` | Liste des radios pré-calculée, régénérée chaque semaine |
 | `tools/build-stations.cjs` | Régénère `stations.json` depuis l'annuaire Radio Browser |
-| `.github/workflows/stations.yml` | Lance ce script chaque lundi et publie la liste si elle a changé |
+| `.github/workflows/stations.yml` | Lance ce script chaque lundi, publie la liste si elle a changé, et aligne la branche `gh-pages` sur `main` (chaque semaine et à chaque push sur `main`). Pages peut donc publier `main` ou `gh-pages` indifféremment |
 | `fonts/` | Polices Barlow et Barlow Condensed (licence SIL OFL, voir `fonts/OFL.txt`) |
 | `manifest.webmanifest` | Nom, icônes et mode d'affichage pour l'installation sur l'écran d'accueil |
 | `app/` | Copie installable en mode app, générée par `build-app.py` |

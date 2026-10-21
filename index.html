@@ -272,7 +272,7 @@ main{padding-block:8px calc(120px + var(--sab))}
 (() => {
 'use strict';
 const $ = id => document.getElementById(id);
-const audio = $('audio');
+let audio = $('audio');
 const IS_HTTPS = location.protocol === 'https:';
 const CAN_HLS = !!audio.canPlayType('application/vnd.apple.mpegurl');
 const API_HOSTS = ['de1.api.radio-browser.info','de2.api.radio-browser.info','fi1.api.radio-browser.info','nl1.api.radio-browser.info','at1.api.radio-browser.info'];
@@ -553,7 +553,31 @@ function candidates(s){
   }
   return arr.sort((a, b) => scoreOf(b) - scoreOf(a));
 }
+/* iPhone : session audio « lecture » (son même en mode silencieux, continue écran verrouillé) */
+function audioSession(){ try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {} }
+/* Lecteur neuf à chaque station choisie : évite un lecteur iOS resté muet */
+const AUDIO_EVENTS = {
+  playing: () => { clearTimeout(S.watch); S.reloading = false; S.retry = 0; S.ever = true; setStatus('live'); },
+  waiting: () => { if (S.want){ setStatus('buffering'); armWatch(12000); } },
+  stalled: () => { if (S.want) armWatch(12000); },
+  error: () => { if (S.want && audio.getAttribute('src')) onFail(); },
+  ended: () => { if (S.want) onFail(); },
+  pause: () => { setTimeout(() => { if (audio.paused && S.want && !S.reloading && S.ever){ S.want = false; setStatus('paused'); } }, 500); }
+};
+function bindAudio(el){
+  for (const [ev, fn] of Object.entries(AUDIO_EVENTS)) el.addEventListener(ev, e => { if (e.target === audio) fn(); });
+}
+function freshAudio(){
+  const old = audio;
+  const el = document.createElement('audio');
+  el.id = 'audio'; el.preload = 'none'; el.setAttribute('playsinline', ''); el.setAttribute('webkit-playsinline', '');
+  bindAudio(el);
+  audio = el;
+  try { old.pause(); old.removeAttribute('src'); old.load(); } catch {}
+  old.replaceWith(el);
+}
 function play(s, queue){
+  audioSession(); freshAudio();
   S.current = s;
   if (queue && queue.length) S.queue = queue.map(x => x.id);
   S.cands = candidates(s); S.ci = 0; S.retry = 0; S.ever = false; S.want = true;
@@ -610,6 +634,7 @@ function pause(){
 }
 function resume(){
   if (!S.current) return;
+  audioSession();
   if (!S.cands.length || S.status === 'dead'){ play(S.current); return; }
   S.want = true; S.retry = 0;
   load();
@@ -624,16 +649,8 @@ function step(d){
   if (n) play(n);
 }
 
-audio.addEventListener('playing', () => { clearTimeout(S.watch); S.reloading = false; S.retry = 0; S.ever = true; setStatus('live'); });
-audio.addEventListener('waiting', () => { if (S.want){ setStatus('buffering'); armWatch(12000); } });
-audio.addEventListener('stalled', () => { if (S.want) armWatch(12000); });
-audio.addEventListener('error', () => { if (S.want && audio.getAttribute('src')) onFail(); });
-audio.addEventListener('ended', () => { if (S.want) onFail(); });
-audio.addEventListener('pause', () => {
-  setTimeout(() => {
-    if (audio.paused && S.want && !S.reloading && S.ever){ S.want = false; setStatus('paused'); }
-  }, 500);
-});
+bindAudio(audio);
+audioSession();
 window.addEventListener('online', () => { if (S.want){ S.retry = 0; load(); } });
 window.addEventListener('offline', () => { if (S.want) setStatus('offline'); });
 
@@ -791,8 +808,10 @@ S.filter = S.favs.length ? 'fav' : 'all';
 $('sortPop').setAttribute('aria-pressed', S.sort === 'pop'); $('sortAz').setAttribute('aria-pressed', S.sort === 'az');
 buildChips();
 loadData(false);
-if ('serviceWorker' in navigator && (IS_HTTPS || location.hostname === 'localhost')){
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+/* Ancien module de cache retiré : il perturbait l'audio sur iPhone */
+if ('serviceWorker' in navigator){
+  navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+  if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
 }
 window.__ondes = { S, processRaw };
 })();

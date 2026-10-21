@@ -310,7 +310,7 @@ const CATS = [
 const CAT_FN = Object.fromEntries(CATS.map(c => [c[0], c[2]]));
 
 const S = {
-  stations: [], byId: new Map(), favs: LS.get('ondes.favs', []),
+  stations: [], byId: new Map(), favs: [], fav: { items: {} },
   filter: null, region: '', sort: LS.get('ondes.sort', 'pop'), q: '',
   list: [], rendered: 0, current: null, queue: [],
   cands: [], ci: 0, want: false, ever: false, reloading: false, retry: 0, timer: 0, watch: 0, wake: null, wakeOn: false
@@ -398,8 +398,17 @@ function setStations(list){
 
 const fmt = n => n.toLocaleString('fr-FR');
 
+/* Liste des radios rangée à part (Cache API), pour laisser le petit stockage aux favoris */
+const DATA_CACHE = 'ondes-data';
+async function dataGet(key){
+  try { if (!window.caches) return null; const c = await caches.open(DATA_CACHE); const r = await c.match('/__' + key); return r ? await r.json() : null; } catch { return null; }
+}
+async function dataPut(key, val){
+  try { if (!window.caches) return false; const c = await caches.open(DATA_CACHE); await c.put('/__' + key, new Response(JSON.stringify(val), { headers: { 'content-type': 'application/json' } })); return true; } catch { return false; }
+}
 async function loadData(force){
-  const cache = LS.get('ondes.cache.v1', null);
+  try { localStorage.removeItem('ondes.cache.v1'); } catch {}
+  const cache = await dataGet('stations');
   if (cache && cache.list && !force){
     setStations(cache.list); updateDate(cache.t); render();
     if (Date.now() - cache.t < 6 * 864e5) return;
@@ -409,7 +418,7 @@ async function loadData(force){
     const list = await fetchStations();
     if (list.length < 20) throw new Error('liste vide');
     const slim = list.map(({ hay, sk, ...s }) => s);
-    LS.set('ondes.cache.v1', { t: Date.now(), list: slim });
+    dataPut('stations', { t: Date.now(), list: slim });
     setStations(list); updateDate(Date.now()); render();
     if (force) toast(fmt(list.length) + ' radios françaises chargées');
   } catch (e){
@@ -419,6 +428,7 @@ async function loadData(force){
     } else if (force) toast('Mise à jour impossible. Vérifie ta connexion.');
   }
   restoreLast();
+  if (S.filter === 'fav') render();
 }
 function updateDate(t){ $('sDate').textContent = new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }); }
 
@@ -444,7 +454,7 @@ function buildRegions(){
 }
 function visible(){
   let L;
-  if (S.filter === 'fav') L = S.favs.map(id => S.byId.get(id)).filter(Boolean);
+  if (S.filter === 'fav') L = favList();
   else { const fn = CAT_FN[S.filter]; L = fn ? S.stations.filter(fn) : S.stations; }
   if (S.region) L = L.filter(s => s.rk === S.region);
   if (S.q){ const q = deacc(S.q.toLowerCase()).trim(); L = L.filter(s => s.sk.includes(q)); }
@@ -521,12 +531,65 @@ function artwork(s){
   return a;
 }
 
-/* ---------- Favoris ---------- */
+/* ---------- Favoris ----------
+   Chaque favori est enregistré avec sa date de modification. Avant chaque écriture, on relit
+   le stockage et on fusionne (la modification la plus récente gagne) : deux fenêtres ouvertes
+   ne peuvent plus s'écraser. Chaque favori garde une copie de la station, il survit donc
+   aux mises à jour de la liste. Une copie de secours est rangée dans un second stockage. */
+const FAV_KEY = 'ondes.favs.v2';
+const snapOf = s => ({ id: s.id, name: s.name, logo: s.logo, home: s.home, region: s.region, rk: s.rk, tags: s.tags, rf: s.rf, uuid: s.uuid, pop: s.pop, streams: s.streams });
+function favReadLocal(){
+  const v = LS.get(FAV_KEY, null);
+  if (v && v.items) return v;
+  const old = LS.get('ondes.favs', []); const items = {};
+  if (Array.isArray(old)) old.forEach((id, i) => { if (typeof id === 'string') items[id] = { on: 1, t: i + 1, a: i + 1 }; });
+  return { items };
+}
+function favMerge(a, b){
+  const out = { ...(a.items || {}) };
+  for (const [id, x] of Object.entries((b && b.items) || {})){
+    const y = out[id];
+    if (!y || (x.t || 0) > (y.t || 0)) out[id] = { ...x, snap: x.snap || (y && y.snap) };
+    else if (!y.snap && x.snap) out[id] = { ...y, snap: x.snap };
+  }
+  return { items: out };
+}
+function favSync(){
+  S.favs = Object.entries(S.fav.items).filter(([, x]) => x.on).sort((p, q) => (p[1].a || 0) - (q[1].a || 0)).map(([id]) => id);
+}
+function favSave(){
+  S.fav = favMerge(favReadLocal(), S.fav);
+  favSync();
+  let ok = true;
+  try { localStorage.setItem(FAV_KEY, JSON.stringify(S.fav)); } catch { ok = false; }
+  dataPut('favs', S.fav).then(b => { if (!ok && !b) toast('Impossible d\'enregistrer les favoris sur cet appareil.'); });
+}
+async function favInit(){
+  S.fav = favReadLocal(); favSync();
+  const backup = await dataGet('favs');
+  if (backup && backup.items){ S.fav = favMerge(S.fav, backup); favSave(); }
+  else if (Object.keys(S.fav.items).length) favSave();
+  try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
+}
+function favStation(id){
+  const s = S.byId.get(id); if (s) return s;
+  const snap = S.fav.items[id] && S.fav.items[id].snap; if (!snap) return null;
+  snap.hay = deacc((snap.name + ' ' + (snap.tags || '')).toLowerCase());
+  snap.sk = deacc((snap.name + ' ' + (snap.tags || '') + ' ' + (snap.region || '')).toLowerCase());
+  return snap;
+}
+const favList = () => S.favs.map(favStation).filter(Boolean);
+window.addEventListener('storage', e => {
+  if (e.key !== FAV_KEY) return;
+  S.fav = favMerge(S.fav, favReadLocal()); favSync();
+  if (S.filter === 'fav') render(); else grid.querySelectorAll('.tile').forEach(t => { const st = S.byId.get(t.dataset.id); if (st) t.replaceWith(tile(st)); });
+  updateFavBtn();
+});
 function toggleFav(s){
-  const i = S.favs.indexOf(s.id);
-  if (i >= 0) S.favs.splice(i, 1); else S.favs.push(s.id);
-  LS.set('ondes.favs', S.favs);
-  toast(i >= 0 ? s.name + ' retirée des favoris' : s.name + ' ajoutée aux favoris');
+  const cur = S.fav.items[s.id]; const was = !!(cur && cur.on); const now = Date.now();
+  S.fav.items[s.id] = { on: was ? 0 : 1, t: now, a: was ? (cur.a || now) : now, snap: snapOf(s) };
+  favSave();
+  toast(was ? s.name + ' retirée des favoris' : s.name + ' ajoutée aux favoris');
   if (S.filter === 'fav') render();
   else grid.querySelectorAll(`.tile[data-id="${CSS.escape(s.id)}"]`).forEach(t => t.replaceWith(tile(s)));
   updateFavBtn();
@@ -646,7 +709,7 @@ function resume(){
 function toggle(){ if (S.want) pause(); else resume(); }
 function step(d){
   if (!S.current) return;
-  let q = S.queue.map(id => S.byId.get(id)).filter(Boolean);
+  let q = S.queue.map(id => S.byId.get(id) || favStation(id)).filter(Boolean);
   if (!q.length) q = S.list.length ? S.list : S.stations;
   let i = q.findIndex(x => x.id === S.current.id);
   const n = q[(i + d + q.length) % q.length];
@@ -705,7 +768,7 @@ function paintStation(){
   updateFavBtn(); paintDial(); setMeta();
 }
 function paintDial(){
-  let q = S.queue.map(id => S.byId.get(id)).filter(Boolean);
+  let q = S.queue.map(id => S.byId.get(id) || favStation(id)).filter(Boolean);
   if (!q.length) q = S.stations;
   const i = Math.max(0, q.findIndex(x => x.id === S.current.id));
   $('needle').style.left = `calc(${q.length > 1 ? (i / (q.length - 1)) * 100 : 50}% - 1.5px)`;
@@ -727,7 +790,7 @@ function markTiles(){
 }
 function restoreLast(){
   if (S.current) return;
-  const id = LS.get('ondes.last', null); const s = id && S.byId.get(id);
+  const id = LS.get('ondes.last', null); const s = id && (S.byId.get(id) || favStation(id));
   if (!s) return;
   S.current = s; S.cands = candidates(s); S.ci = 0;
   $('player').hidden = false; paintStation(); paintQuality(); markTiles(); setStatus('idle');
@@ -744,7 +807,7 @@ if ('mediaSession' in navigator){
 /* ---------- Mode conduite ---------- */
 function openDrive(){
   if (!S.current){
-    const s = S.favs.map(id => S.byId.get(id)).find(Boolean) || S.stations[0];
+    const s = favList()[0] || S.stations[0];
     if (!s) return;
     S.current = s; S.cands = candidates(s); $('player').hidden = false; paintStation(); paintQuality(); setStatus('idle');
   }
@@ -810,14 +873,17 @@ document.addEventListener('keydown', e => {
 /* ---------- Démarrage ---------- */
 /* Ancienne icône en mode « app plein écran » sur iPhone : iOS y coupe le son à la réouverture */
 if (window.navigator.standalone === true) $('iosNote').hidden = false;
+(async () => {
+await favInit();
 S.filter = S.favs.length ? 'fav' : 'all';
 $('sortPop').setAttribute('aria-pressed', S.sort === 'pop'); $('sortAz').setAttribute('aria-pressed', S.sort === 'az');
 buildChips();
 loadData(false);
+})();
 /* Ancien module de cache retiré : il perturbait l'audio sur iPhone */
 if ('serviceWorker' in navigator){
   navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
-  if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
+  if (window.caches) caches.keys().then(ks => ks.filter(k => k.startsWith('ondes-v')).forEach(k => caches.delete(k))).catch(() => {});
 }
 window.__ondes = { S, processRaw };
 })();

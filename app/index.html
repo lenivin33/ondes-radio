@@ -161,6 +161,35 @@ main{padding-block:8px calc(120px + var(--sab))}
 .toast{position:fixed;left:50%;bottom:calc(100px + var(--sab));text-align:center;transform:translateX(-50%);z-index:60;max-width:calc(100% - 32px);
   background:var(--fg);color:var(--bg);padding:12px 16px;border-radius:12px;font-size:15px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.3)}
 .drive:not([hidden]) ~ .toast{bottom:auto;top:calc(64px + var(--sat))}
+/* Téléphone à l'horizontale (support voiture) */
+@media (orientation: landscape) and (max-height: 520px){
+  header{position:static;padding-block:8px 6px;grid-template-columns:auto minmax(0,1fr);column-gap:12px;row-gap:8px;align-items:center}
+  header>.top{grid-column:1}
+  header>.search{grid-column:2}
+  header>.chips,header>.row{grid-column:1/-1}
+  .brand{font-size:24px}
+  .search input{height:44px}
+  main{padding-block:4px calc(84px + var(--sab))}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(min(92px,100%),1fr))}
+  .player{padding-block:6px calc(6px + var(--sab))}
+  .p-info .logo{width:46px;height:46px;border-radius:12px}
+  .ctrl.main{width:52px;height:52px}
+  .drive{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);column-gap:24px;
+    padding-block:calc(6px + var(--sat)) calc(10px + var(--sab))}
+  .d-top{grid-column:1/-1}
+  .d-center{grid-column:1;grid-row:2;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:1fr auto auto auto 1fr;
+    column-gap:20px;row-gap:10px;align-items:center;justify-items:start;text-align:left}
+  .d-center .logo{grid-row:1/-1;width:min(52vh,240px);border-radius:24px}
+  .d-center .logo.mono{font-size:48px}
+  .d-name{grid-column:2;grid-row:2;font-size:clamp(24px,8vh,40px)}
+  .d-status{grid-column:2;grid-row:3;justify-content:flex-start}
+  .dial{grid-column:2;grid-row:4;margin:0}
+  .d-ctrls{grid-column:2;grid-row:2;align-self:center;padding-top:0}
+  .d-ctrls .ctrl{width:min(84px,22vh);height:min(84px,22vh)}
+  .d-ctrls .ctrl.main{width:min(112px,30vh);height:min(112px,30vh)}
+  .hint{display:none}
+  .sheet{max-height:92vh}
+}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>

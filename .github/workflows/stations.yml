@@ -1,0 +1,37 @@
+name: Liste des radios
+
+# Chaque lundi à 4 h (UTC), régénère stations.json depuis l'annuaire Radio Browser.
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stations
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Générer stations.json
+        run: node tools/build-stations.cjs
+      - name: Publier si la liste a changé
+        run: |
+          if git diff --quiet -- stations.json; then
+            echo "Liste inchangée"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git add stations.json
+          git commit -m "Liste des radios : mise à jour hebdomadaire"
+          git push

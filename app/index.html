@@ -12,10 +12,14 @@
 <link rel="icon" href="../icon-192.png">
 <link rel="apple-touch-icon" href="../apple-touch-icon-v2.png">
 <title>Ondes</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<script src="../stations-core.js"></script>
 <style>
+/* Polices hébergées avec l'app (aucune requête vers Google) */
+@font-face{font-family:'Barlow';font-weight:400;font-display:swap;src:url('../fonts/barlow-400.woff2') format('woff2')}
+@font-face{font-family:'Barlow';font-weight:500;font-display:swap;src:url('../fonts/barlow-500.woff2') format('woff2')}
+@font-face{font-family:'Barlow';font-weight:600;font-display:swap;src:url('../fonts/barlow-600.woff2') format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-weight:600;font-display:swap;src:url('../fonts/barlow-condensed-600.woff2') format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-weight:700;font-display:swap;src:url('../fonts/barlow-condensed-700.woff2') format('woff2')}
 /* Layout : tableau de bord voiture. Grille de logos au doigt, lecteur fixe en bas, mode conduite plein écran. */
 :root{
   --bg:#0E1116; --surface:#161B23; --surface-2:#212934; --line:#2B3441;
@@ -158,6 +162,11 @@ main{padding-block:8px calc(120px + var(--sab))}
 .sheet .stat{display:flex;justify-content:space-between;gap:12px;font-variant-numeric:tabular-nums;font-size:15px;border-bottom:1px solid var(--line);padding-bottom:10px}
 .btn{height:48px;border-radius:14px;background:var(--surface-2);font-weight:600;font-size:16px;padding:0 18px}
 .btn.primary{background:var(--accent);color:var(--accent-ink)}
+.opt{display:flex;align-items:center;gap:16px;cursor:pointer}
+.opt span{flex:1;min-width:0;display:grid;gap:4px}
+.opt b{font-size:15px}
+.opt small{color:var(--muted);font-size:14px}
+.opt input{flex:none;width:24px;height:24px;accent-color:var(--accent)}
 
 .toast{position:fixed;left:50%;bottom:calc(100px + var(--sab));text-align:center;transform:translateX(-50%);z-index:60;max-width:calc(100% - 32px);
   background:var(--fg);color:var(--bg);padding:12px 16px;border-radius:12px;font-size:15px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.3)}
@@ -294,6 +303,10 @@ main{padding-block:8px calc(120px + var(--sab))}
       <h3>Source</h3>
       <p>Annuaire libre et gratuit Radio Browser, filtré sur la France et l'outre-mer. Aucune publicité, aucun compte, aucun suivi.</p>
     </div>
+    <label class="opt">
+      <span><b>Logos complémentaires</b><small>Pour les radios dont le logo manque, demande l'icône de leur site au service de Google, qui reçoit alors l'adresse de ces sites. Désactivée, environ une radio sur quatre n'affiche que ses initiales.</small></span>
+      <input type="checkbox" id="sGoogle">
+    </label>
     <button class="btn" id="sClose">Fermer</button>
   </div>
 </div>
@@ -308,19 +321,18 @@ const $ = id => document.getElementById(id);
 let audio = $('audio');
 const IS_HTTPS = location.protocol === 'https:';
 const CAN_HLS = !!audio.canPlayType('application/vnd.apple.mpegurl');
-const API_HOSTS = ['de1.api.radio-browser.info','de2.api.radio-browser.info','fi1.api.radio-browser.info','nl1.api.radio-browser.info','at1.api.radio-browser.info'];
-const OUTRE = {RE:'La Réunion',GP:'Guadeloupe',MQ:'Martinique',GF:'Guyane',YT:'Mayotte',NC:'Nouvelle-Calédonie',PF:'Polynésie française',PM:'Saint-Pierre-et-Miquelon',BL:'Saint-Barthélemy',MF:'Saint-Martin',WF:'Wallis-et-Futuna'};
+const { deacc, cleanName, keyOf, processRaw, fetchRaw, discoverHosts } = window.OndesCore;
 const LS = {
   get(k, d){ try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
-const deacc = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+const collator = new Intl.Collator('fr');
 
 /* Radio France en secours si l'annuaire est injoignable au premier lancement */
 const FALLBACK = [
   ['France Inter','franceinter'],['franceinfo','franceinfo'],['France Culture','franceculture'],
   ['France Musique','francemusique'],['FIP','fip'],['Mouv\'','mouv']
-].map(([name, id], i) => ({ id: 'rf' + id, name, logo: '', home: 'https://www.radiofrance.fr', tags: 'radio france', region: '', rk: '', pop: 100 - i, rf: true,
+].map(([name, id], i) => ({ id: keyOf(name), name, logo: '', home: 'https://www.radiofrance.fr', tags: 'radio france', region: '', rk: '', pop: 100 - i, rf: true,
   streams: [{ u: `https://icecast.radiofrance.fr/${id}-hifi.aac`, c: 'AAC', b: 192, h: 0 }, { u: `https://icecast.radiofrance.fr/${id}-midfi.mp3`, c: 'MP3', b: 128, h: 0 }] }));
 
 const CATS = [
@@ -342,75 +354,45 @@ const S = {
   stations: [], byId: new Map(), favs: [], fav: { items: {} },
   filter: null, region: '', sort: LS.get('ondes.sort', 'pop'), q: '',
   list: [], rendered: 0, current: null, queue: [],
-  cands: [], ci: 0, want: false, ever: false, reloading: false, retry: 0, timer: 0, watch: 0, wake: null, wakeOn: false
+  cands: [], ci: 0, want: false, ever: false, reloading: false, retry: 0, timer: 0, watch: 0, wake: null, wakeOn: false,
+  googleLogos: LS.get('ondes.googleLogos', true)
 };
 
-/* ---------- Données ---------- */
-const QUAL_RE = /\b(hd|hq|hi-?fi|high quality|haute qualite|aac\+?|he-aac|mp3|ogg|opus|flac|\d{2,3} ?k(bps|b|bit)?)\b/gi;
-function cleanName(n){
-  let s = (n || '').replace(/[\(\[][^\)\]]*[\)\]]\s*$/g, m => /kbps|aac|mp3|hd|hq|hifi|\d+ ?k\b|flac|ogg/i.test(m) ? '' : m);
-  s = s.replace(QUAL_RE, '').replace(/[\s\-–|_:.\/]+$/, '').replace(/^[\s\-–|_:.]+/, '').replace(/\s{2,}/g, ' ').trim();
-  return s || (n || '').trim();
+/* ---------- Données ----------
+   1. Liste en cache sur l'appareil : affichage immédiat.
+   2. stations.json, pré-calculé chaque semaine et servi avec l'app : léger, ne dépend pas de l'annuaire.
+   3. Annuaire Radio Browser en direct, si stations.json manque, date de plus de 3 semaines, ou sur demande.
+   4. Radio France intégrée, si tout le reste échoue. */
+const LIST_URL = '../stations.json';
+const DAY = 864e5;
+async function getJsonUrl(url, ms, opts){
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(url, { ...opts, signal: ctrl.signal });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } finally { clearTimeout(t); }
 }
-const keyOf = n => deacc(cleanName(n)).toLowerCase().replace(/[^a-z0-9]/g, '');
-
+let hostsP = null;
+function apiHosts(){
+  if (!hostsP){
+    const c = LS.get('ondes.hosts', null);
+    hostsP = c && Array.isArray(c.h) && c.h.length && Date.now() - c.t < DAY ? Promise.resolve(c.h)
+      : discoverHosts(u => getJsonUrl(u, 8000).then(j => ({ json: () => j }))).then(h => { LS.set('ondes.hosts', { t: Date.now(), h }); return h; });
+  }
+  return hostsP;
+}
 async function api(path){
-  const hosts = API_HOSTS.slice().sort(() => Math.random() - .5);
-  for (const h of hosts){
-    try {
-      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 15000);
-      const r = await fetch('https://' + h + path, { signal: ctrl.signal });
-      clearTimeout(t);
-      if (r.ok){ S.apiHost = h; return await r.json(); }
-    } catch {}
+  for (const h of await apiHosts()){
+    try { const j = await getJsonUrl('https://' + h + path, 20000); S.apiHost = h; return j; } catch {}
   }
   throw new Error('Annuaire injoignable');
 }
-
-async function fetchStations(){
-  const q = cc => `/json/stations/search?countrycode=${cc}&hidebroken=true&order=clickcount&reverse=true&limit=20000`;
-  const main = await api(q('FR'));
-  const extra = await Promise.allSettled(Object.keys(OUTRE).map(cc => api(q(cc))));
-  let raw = main;
-  extra.forEach(r => { if (r.status === 'fulfilled' && Array.isArray(r.value)) raw = raw.concat(r.value); });
-  return processRaw(raw);
-}
-
-function processRaw(raw){
-  const groups = new Map();
-  for (const r of raw){
-    const u = (r.url_resolved || r.url || '').trim();
-    if (!r.name || !/^https?:\/\//i.test(u)) continue;
-    const k = keyOf(r.name); if (!k) continue;
-    (groups.get(k) || groups.set(k, []).get(k)).push(r);
-  }
-  const out = [];
-  for (const [k, items] of groups){
-    items.sort((a, b) => (b.clickcount + b.votes) - (a.clickcount + a.votes));
-    const top = items[0];
-    const streams = [], seen = new Set();
-    const add = (u, c, b, h) => { if (seen.has(u)) return; seen.add(u); streams.push({ u, c, b, h }); };
-    let rf = false, logo = '', home = '', pop = 0;
-    const tags = new Set(), regions = {};
-    for (const r of items){
-      const u = (r.url_resolved || r.url).trim();
-      const m = u.match(/^https?:\/\/icecast\.radiofrance\.fr\/([a-z0-9_]+?)-(?:lofi|midfi|hifi)\.(?:mp3|aac)/i);
-      if (m){ rf = true; add(`https://icecast.radiofrance.fr/${m[1]}-hifi.aac`, 'AAC', 192, 0); }
-      add(u, (r.codec || '').toUpperCase().replace('UNKNOWN', ''), +r.bitrate || 0, r.hls ? 1 : 0);
-      if (!logo && r.favicon && /^https?:\/\//i.test(r.favicon)) logo = r.favicon.trim().replace(/^http:/i, 'https:');
-      if (!home && r.homepage && /^https?:\/\//i.test(r.homepage)) home = r.homepage.trim();
-      if (/radiofrance\.(fr|com)/i.test(r.homepage || '')) rf = true;
-      (r.tags || '').split(',').forEach(t => { t = t.trim().toLowerCase(); if (t && t.length < 30) tags.add(t); });
-      const reg = r.countrycode && r.countrycode !== 'FR' ? (OUTRE[r.countrycode] || '') : (r.state || '').trim();
-      if (reg) regions[reg] = (regions[reg] || 0) + 1;
-      pop += (+r.clickcount || 0) + (+r.votes || 0) * 2;
-    }
-    const region = Object.entries(regions).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
-    out.push({ id: k, name: cleanName(top.name), logo, home, tags: [...tags].slice(0, 14).join(', '),
-      region, rk: deacc(region).toLowerCase().replace(/[^a-z]/g, ''), pop, rf, uuid: top.stationuuid, streams });
-  }
-  out.sort((a, b) => b.pop - a.pop);
-  return out;
+async function fetchDirectory(){ return processRaw(await fetchRaw(api)); }
+async function fetchPrebuilt(){
+  const d = await getJsonUrl(LIST_URL, 20000, { cache: 'no-cache' });
+  if (!d || !d.t || !Array.isArray(d.list) || d.list.length < 20) throw new Error('liste invalide');
+  return d;
 }
 
 function setStations(list){
@@ -420,12 +402,14 @@ function setStations(list){
   });
   S.stations = list;
   S.byId = new Map(list.map(s => [s.id, s]));
+  if (S.current) S.current = S.byId.get(S.current.id) || S.current;
   buildRegions();
   $('count').textContent = fmt(list.length) + ' radios';
   $('sCount').textContent = fmt(list.length);
 }
 
 const fmt = n => n.toLocaleString('fr-FR');
+const slim = list => list.map(({ hay, sk, _li, ...s }) => s);
 
 /* Liste des radios rangée à part (Cache API), pour laisser le petit stockage aux favoris */
 const DATA_CACHE = 'ondes-data';
@@ -438,26 +422,31 @@ async function dataPut(key, val){
 async function loadData(force){
   try { localStorage.removeItem('ondes.cache.v1'); } catch {}
   const cache = await dataGet('stations');
-  if (cache && cache.list && !force){
-    setStations(cache.list); updateDate(cache.t); render();
-    if (Date.now() - cache.t < 6 * 864e5) return;
-  } else if (!cache) renderSkeleton();
-  try {
-    if (force) toast('Mise à jour de la liste…');
-    const list = await fetchStations();
-    if (list.length < 20) throw new Error('liste vide');
-    const slim = list.map(({ hay, sk, ...s }) => s);
-    dataPut('stations', { t: Date.now(), list: slim });
-    setStations(list); updateDate(Date.now()); render();
-    if (force) toast(fmt(list.length) + ' radios françaises chargées');
-  } catch (e){
-    if (!S.stations.length){
-      setStations(FALLBACK); render();
-      toast('Annuaire injoignable. Radio France disponible, nouvel essai au prochain lancement.');
-    } else if (force) toast('Mise à jour impossible. Vérifie ta connexion.');
-  }
+  const have = !!(cache && Array.isArray(cache.list) && cache.list.length);
+  if (have && !S.stations.length){ setStations(cache.list); updateDate(cache.t); render(); }
+  else if (!have && !S.stations.length) renderSkeleton();
   restoreLast();
-  if (S.filter === 'fav') render();
+  /* Liste vérifiée il y a moins de 12 h : rien à faire */
+  if (have && !force && Date.now() - (cache.c || cache.t) < DAY / 2) return;
+  if (force) toast('Mise à jour de la liste…');
+  let data = null;
+  try { const d = await fetchPrebuilt(); if (Date.now() - d.t < 21 * DAY) data = d; } catch {}
+  if (!data || (force && have && data.t <= cache.t)){
+    try { const list = await fetchDirectory(); if (list.length >= 20) data = { t: Date.now(), list }; } catch {}
+  }
+  if (data && (!have || data.t !== cache.t)){
+    const shown = S.stations.length > 0 && S.stations !== FALLBACK;
+    dataPut('stations', { t: data.t, c: Date.now(), list: slim(data.list) });
+    setStations(data.list); updateDate(data.t); render(shown);
+    if (force) toast(fmt(data.list.length) + ' radios françaises chargées');
+  } else if (data){
+    dataPut('stations', { t: cache.t, c: Date.now(), list: slim(cache.list) });
+    if (force) toast('La liste est déjà à jour');
+  } else if (!S.stations.length){
+    setStations(FALLBACK); render();
+    toast('Annuaire injoignable. Radio France disponible, nouvel essai au prochain lancement.');
+  } else if (force) toast('Mise à jour impossible. Vérifie ta connexion.');
+  restoreLast();
 }
 function updateDate(t){ $('sDate').textContent = new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }); }
 
@@ -487,7 +476,7 @@ function visible(){
   else { const fn = CAT_FN[S.filter]; L = fn ? S.stations.filter(fn) : S.stations; }
   if (S.region) L = L.filter(s => s.rk === S.region);
   if (S.q){ const q = deacc(S.q.toLowerCase()).trim(); L = L.filter(s => s.sk.includes(q)); }
-  if (S.sort === 'az' && S.filter !== 'fav') L = [...L].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  if (S.sort === 'az' && S.filter !== 'fav') L = [...L].sort((a, b) => collator.compare(a.name, b.name));
   return L;
 }
 
@@ -497,7 +486,9 @@ function renderSkeleton(){
   grid.innerHTML = Array.from({ length: 12 }, () => '<div class="tile skel"><span class="logo"></span><span class="tname"></span></div>').join('');
   $('meta').textContent = 'Chargement des radios françaises…';
 }
-function render(){
+/* keep : la liste a changé en arrière-plan, on garde ce qui était affiché et la position de lecture */
+function render(keep){
+  const y = keep ? window.scrollY : 0, shown = keep ? S.rendered : 0;
   S.list = visible(); S.rendered = 0; grid.innerHTML = '';
   const n = S.list.length;
   if (!n){
@@ -508,15 +499,20 @@ function render(){
     const g = $('goAll'); if (g) g.onclick = () => { S.filter = 'all'; buildChips(); render(); };
   }
   $('meta').textContent = n ? (n === 1 ? '1 radio' : fmt(n) + ' radios') + (S.filter === 'fav' ? ' en favoris' : '') : '';
-  renderMore();
+  renderMore(Math.max(48, shown));
+  if (keep) window.scrollTo(0, y);
 }
-function renderMore(){
-  const end = Math.min(S.rendered + 48, S.list.length);
+const sentinel = $('sentinel');
+const moreObs = new IntersectionObserver(es => { if (es[0].isIntersecting && S.rendered < S.list.length) renderMore(); }, { rootMargin: '800px' });
+moreObs.observe(sentinel);
+function renderMore(count = 48){
+  const end = Math.min(S.rendered + count, S.list.length);
   const frag = document.createDocumentFragment();
   for (let i = S.rendered; i < end; i++) frag.appendChild(tile(S.list[i]));
   grid.appendChild(frag); S.rendered = end;
+  /* Grand écran : si le repère reste visible, l'observateur ne se redéclencherait pas. On le réarme. */
+  if (S.rendered < S.list.length){ moreObs.unobserve(sentinel); moreObs.observe(sentinel); }
 }
-new IntersectionObserver(es => { if (es[0].isIntersecting && S.rendered < S.list.length) renderMore(); }, { rootMargin: '800px' }).observe($('sentinel'));
 
 function tile(s){
   const d = document.createElement('div');
@@ -537,7 +533,13 @@ const initials = n => { const w = cleanName(n).replace(/[^\p{L}\p{N} ]/gu, ' ').
 function logoSources(s){
   const src = [];
   if (s.logo) src.push(s.logo);
-  if (s.home){ try { src.push('https://www.google.com/s2/favicons?sz=256&domain=' + new URL(s.home).hostname); } catch {} }
+  if (s.home){
+    try {
+      const host = new URL(s.home).hostname;
+      /* Google trouve presque toujours une icône ; sans lui, on tente celle du site de la radio */
+      src.push(S.googleLogos ? 'https://www.google.com/s2/favicons?sz=256&domain=' + host : 'https://' + host + '/apple-touch-icon.png');
+    } catch {}
+  }
   return src;
 }
 function logoInto(el, s, lazy){
@@ -704,7 +706,12 @@ function armWatch(ms){
 function onFail(){
   clearTimeout(S.watch); clearTimeout(S.timer);
   if (!S.want) return;
-  if (!navigator.onLine){ setStatus('offline'); return; }
+  /* Hors ligne : on revérifie toutes les 5 s, l'événement « online » n'arrive pas toujours (iPhone en arrière-plan) */
+  if (!navigator.onLine){
+    setStatus('offline');
+    S.timer = setTimeout(() => { if (!S.want) return; if (navigator.onLine){ S.retry = 0; load(); } else onFail(); }, 5000);
+    return;
+  }
   if (!S.ever){
     S.ci++;
     if (S.ci >= S.cands.length) return giveUp();
@@ -740,8 +747,9 @@ function step(d){
   if (!S.current) return;
   let q = S.queue.map(id => S.byId.get(id) || favStation(id)).filter(Boolean);
   if (!q.length) q = S.list.length ? S.list : S.stations;
-  let i = q.findIndex(x => x.id === S.current.id);
-  const n = q[(i + d + q.length) % q.length];
+  const i = q.findIndex(x => x.id === S.current.id);
+  /* Radio en cours absente de la liste : suivante = la première, précédente = la dernière */
+  const n = i < 0 ? q[d > 0 ? 0 : q.length - 1] : q[(i + d + q.length) % q.length];
   if (n) play(n);
 }
 
@@ -751,8 +759,8 @@ window.addEventListener('online', () => { if (S.want){ S.retry = 0; load(); } })
 window.addEventListener('offline', () => { if (S.want) setStatus('offline'); });
 
 function countClick(s){
-  if (!s.uuid || !S.apiHost) return;
-  fetch(`https://${S.apiHost}/json/url/${s.uuid}`).catch(() => {});
+  if (!s.uuid) return;
+  apiHosts().then(h => fetch(`https://${S.apiHost || h[0]}/json/url/${s.uuid}`)).catch(() => {});
 }
 
 /* ---------- Affichage lecteur ---------- */
@@ -840,10 +848,27 @@ function openDrive(){
     if (!s) return;
     S.current = s; S.cands = candidates(s); $('player').hidden = false; paintStation(); paintQuality(); setStatus('idle');
   }
-  $('drive').hidden = false; paintDial();
+  openLayer('drive'); paintDial();
   if (S.wakeOn) wakeOn();
 }
-function closeDrive(){ $('drive').hidden = true; }
+function closeDrive(){ if (!$('drive').hidden) closeLayer(); }
+/* Mode conduite et réglages s'ouvrent comme une page : le bouton retour d'Android les ferme
+   au lieu de quitter l'app. Quitter le mode conduite rend aussi la veille de l'écran. */
+function showLayer(name){
+  $('drive').hidden = name !== 'drive';
+  $('sheetBg').hidden = name !== 'sheet';
+  if (name !== 'drive' && S.wake){ S.wake.release().catch(() => {}); S.wake = null; }
+}
+function openLayer(name){
+  if (history.state && history.state.layer) history.replaceState({ layer: name }, '');
+  else history.pushState({ layer: name }, '');
+  showLayer(name);
+}
+function closeLayer(){
+  if (history.state && history.state.layer) history.back(); else showLayer(null);
+}
+window.addEventListener('popstate', e => showLayer((e.state && e.state.layer) || null));
+if (history.state && history.state.layer) history.replaceState(null, '');
 async function wakeOn(){
   try { S.wake = await navigator.wakeLock.request('screen'); S.wake.addEventListener('release', () => { S.wake = null; }); }
   catch { S.wakeOn = false; $('dWake').setAttribute('aria-pressed', 'false'); toast('Ton navigateur ne permet pas de garder l\'écran allumé.'); }
@@ -890,12 +915,18 @@ $('qClear').onclick = e => { e.preventDefault(); $('q').value = ''; S.q = ''; $(
 $('region').onchange = e => { S.region = e.target.value; if (S.region && S.filter === 'fav'){ S.filter = 'all'; buildChips(); } render(); };
 function setSort(v){ S.sort = v; LS.set('ondes.sort', v); $('sortPop').setAttribute('aria-pressed', v === 'pop'); $('sortAz').setAttribute('aria-pressed', v === 'az'); render(); }
 $('sortPop').onclick = () => setSort('pop'); $('sortAz').onclick = () => setSort('az');
-$('btnSettings').onclick = () => { $('sheetBg').hidden = false; };
-$('sClose').onclick = () => { $('sheetBg').hidden = true; };
-$('sheetBg').onclick = e => { if (e.target === $('sheetBg')) $('sheetBg').hidden = true; };
-$('sRefresh').onclick = () => { $('sheetBg').hidden = true; loadData(true); };
+$('btnSettings').onclick = () => openLayer('sheet');
+$('sClose').onclick = closeLayer;
+$('sheetBg').onclick = e => { if (e.target === $('sheetBg')) closeLayer(); };
+$('sRefresh').onclick = () => { closeLayer(); loadData(true); };
+$('sGoogle').checked = S.googleLogos;
+$('sGoogle').onchange = e => {
+  S.googleLogos = e.target.checked; LS.set('ondes.googleLogos', S.googleLogos);
+  S.stations.concat(favList()).forEach(s => { delete s._li; });
+  render(true); if (S.current) paintStation();
+};
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape'){ $('sheetBg').hidden = true; closeDrive(); }
+  if (e.key === 'Escape' && (!$('sheetBg').hidden || !$('drive').hidden)) closeLayer();
   if (e.key === ' ' && e.target === document.body){ e.preventDefault(); toggle(); }
 });
 

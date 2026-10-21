@@ -1,11 +1,11 @@
 {
-  "name": "Ondes – Radios françaises",
+  "name": "Ondes",
   "short_name": "Ondes",
   "description": "Toutes les radios françaises en direct, sans publicité.",
   "lang": "fr",
   "start_url": "./",
   "scope": "./",
-  "display": "browser",
+  "display": "standalone",
   "background_color": "#0E1116",
   "theme_color": "#0E1116",
   "categories": [

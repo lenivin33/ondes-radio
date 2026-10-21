@@ -1,7 +1,7 @@
 # Génère app/ : même application, installable en mode app (plein écran) sur iPhone.
 import json, re
 s = open('index.html').read()
-for f in ['icon-192.png', 'icon-512.png']:
+for f in ['icon-192.png', 'icon-512.png', 'apple-touch-icon-v2.png']:
     s = s.replace(f'href="{f}"', f'href="../{f}"').replace(f"'{f}'", f"'../{f}'")
 s = s.replace("if (window.navigator.standalone === true) $('iosNote').hidden = false;", "/* version app : pas de bandeau */")
 open('app/index.html', 'w').write(s)

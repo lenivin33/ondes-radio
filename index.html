@@ -466,8 +466,8 @@ async function loadData(force){
   if (have && !S.stations.length){ setStations(cache.list); updateDate(cache.t); render(); }
   else if (!have && !S.stations.length) renderSkeleton();
   restoreLast();
-  /* Liste vérifiée il y a moins de 12 h : rien à faire */
-  if (have && !force && Date.now() - (cache.c || cache.t) < DAY / 2) return;
+  /* Liste vérifiée il y a moins d'une heure : rien à faire (sinon simple vérification, presque gratuite si rien n'a changé) */
+  if (have && !force && Date.now() - (cache.c || cache.t) < DAY / 24) return;
   if (force) toast('Mise à jour de la liste…');
   let data = null;
   try { const d = await fetchPrebuilt(); if (Date.now() - d.t < 21 * DAY) data = d; } catch {}
@@ -679,6 +679,8 @@ function scoreOf(c){
   let f = /FLAC/.test(codec) ? 10 : /AAC|OGG|OPUS/.test(codec) ? 1.35 : 1;
   let sc = b * f;
   if (c.h && !CAN_HLS) sc -= 1e6;
+  /* HLS (iPhone) : seulement à défaut de flux continu en https, que l'animation sait analyser */
+  if (c.h) sc -= 3e4;
   if (c.up) sc -= 5e4;
   return sc;
 }
@@ -1117,6 +1119,7 @@ function tapSync(){
   const c = S.cands[S.ci];
   const want = tapMode() && S.anim && S.want && !!S.current && vizShown() && c && corsKnown(c.u) !== false;
   if (!want){ if (TAP.ctrl) tapStop(); return; }
+  if (c.h || /\.m3u8(\?|$)/i.test(c.u)){ if (TAP.ctrl) tapStop(); TAP.why = 'flux HLS (découpé en fichiers) : analyse impossible pour cette radio'; return; }
   const url = tapUrl(c);
   if ((TAP.url !== url || TAP.el0 !== S.loadWall) && performance.now() >= TAP.retryAt) tapStart(url);
 }

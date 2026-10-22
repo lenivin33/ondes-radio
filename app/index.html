@@ -179,6 +179,7 @@ main{padding-block:8px calc(120px + var(--sab))}
 .band b{text-align:right;font-weight:600}
 .band input{width:100%;height:36px;margin:0;accent-color:var(--accent)}
 .eq-note:empty{display:none}
+.viz-diag{font-size:12px;color:var(--muted);max-width:min(340px,100%);text-align:center;font-variant-numeric:tabular-nums}
 
 .toast{position:fixed;left:50%;bottom:calc(100px + var(--sab));text-align:center;transform:translateX(-50%);z-index:60;max-width:calc(100% - 32px);
   background:var(--fg);color:var(--bg);padding:12px 16px;border-radius:12px;font-size:15px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.3)}
@@ -199,14 +200,15 @@ main{padding-block:8px calc(120px + var(--sab))}
   .drive{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);column-gap:24px;
     padding-block:calc(6px + var(--sat)) calc(10px + var(--sab))}
   .d-top{grid-column:1/-1}
-  .d-center{grid-column:1;grid-row:2;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:1fr auto auto auto auto 1fr;
+  .d-center{grid-column:1;grid-row:2;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:1fr auto auto auto auto auto 1fr;
     column-gap:20px;row-gap:10px;align-items:center;justify-items:start;text-align:left}
   .d-center .logo{grid-row:1/-1;width:min(52vh,240px);border-radius:24px}
   .d-center .logo.mono{font-size:48px}
   .d-name{grid-column:2;grid-row:2;font-size:clamp(24px,8vh,40px)}
   .d-status{grid-column:2;grid-row:3;justify-content:flex-start}
   .d-center .viz{grid-column:2;grid-row:4;height:40px}
-  .dial{grid-column:2;grid-row:5;margin:0}
+  .d-center .viz-diag{grid-column:2;grid-row:5;text-align:left}
+  .dial{grid-column:2;grid-row:6;margin:0}
   .d-ctrls{grid-column:2;grid-row:2;align-self:center;padding-top:0}
   .d-ctrls .ctrl{width:min(84px,22vh);height:min(84px,22vh)}
   .d-ctrls .ctrl.main{width:min(112px,30vh);height:min(112px,30vh)}
@@ -289,6 +291,7 @@ main{padding-block:8px calc(120px + var(--sab))}
     <div class="d-name" id="dName"></div>
     <div class="d-status"><span class="dot" id="dDot"></span><span id="dStatus"></span><span class="badge" id="dQual"></span></div>
     <canvas class="viz" id="dViz" aria-hidden="true"></canvas>
+    <div class="viz-diag" id="vizDiag" hidden></div>
     <div class="dial" aria-hidden="true">
       <div class="dial-scale"><div class="needle" id="needle"></div></div>
       <div class="dial-legend"><span id="dPos"></span><span id="dList"></span></div>
@@ -1102,8 +1105,10 @@ function paintEqNote(){
    connexion au même flux, découpe les trames MP3 ou AAC, les décode et calcule elle-même le spectre.
    La lecture, elle, reste sur le lecteur habituel. Active seulement quand l'animation est à l'écran
    (elle double alors les données consommées). */
-const TAP_SR = 44100, TAP_CAP = TAP_SR * 30, FFT_N = 2048;
-const TAP = { ctrl: null, url: '', ring: new Float32Array(TAP_CAP), total: 0, wall: 0, retryAt: 0, q: Promise.resolve(), octx: null,
+/* 24 kHz suffisent pour l'animation (bandes jusqu'à 12 kHz) ; 2 min de mémoire : certains serveurs envoient 40 s d'avance */
+const TAP_SR = 24000, TAP_CAP = TAP_SR * 120, FFT_N = 1024;
+const TAP = { ctrl: null, url: '', ring: new Float32Array(TAP_CAP), total: 0, queued: 0, wall: 0, retryAt: 0, q: Promise.resolve(), octx: null,
+  why: '', ok: 0, fails: 0,
   re: new Float32Array(FFT_N), im: new Float32Array(FFT_N), mag: new Float32Array(FFT_N / 2), data: new Uint8Array(FFT_N / 2) };
 const FFT_WIN = Float32Array.from({ length: FFT_N }, (_, i) => 0.42 - 0.5 * Math.cos(2 * Math.PI * i / FFT_N) + 0.08 * Math.cos(4 * Math.PI * i / FFT_N));
 /* Même flux que le lecteur : les autres versions (ex. 32 kbps de Radio France) ne sont pas synchronisées */
@@ -1117,7 +1122,7 @@ function tapSync(){
 }
 function tapStop(){
   if (TAP.ctrl) TAP.ctrl.abort();
-  TAP.ctrl = null; TAP.url = ''; TAP.total = 0; TAP.wall = 0;
+  TAP.ctrl = null; TAP.url = ''; TAP.total = 0; TAP.queued = 0; TAP.wall = 0; TAP.ok = 0; TAP.fails = 0;
 }
 /* Longueur et durée d'une trame MP3 (couche III) ou AAC (ADTS) commençant en i ; null si ce n'est pas une trame */
 const MP3_BR = [[0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320], [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160]];
@@ -1143,40 +1148,48 @@ function framesSpan(b){
   for (; s < b.length - 7; s++){ const f = frameAt(b, s); if (f && (s + f.len >= b.length - 7 || frameAt(b, s + f.len))) break; }
   let e = s, dur = 0;
   for (;;){ const f = frameAt(b, e); if (!f || e + f.len > b.length) break; e += f.len; dur += f.dur; }
-  return dur >= 0.5 ? [s, e] : (s > 0 && e === s ? [s, s] : null);
+  return dur >= 0.5 ? [s, e, dur] : (s > 0 && e === s ? [s, s, 0] : null);
 }
 function tapStart(url){
   tapStop();
   const ctrl = TAP.ctrl = new AbortController();
-  TAP.url = url; TAP.t0 = performance.now(); TAP.el0 = S.loadWall;
+  TAP.url = url; TAP.t0 = performance.now(); TAP.el0 = S.loadWall; TAP.why = 'connexion…'; TAP.seen = 0;
   if (!TAP.octx){ const O = window.OfflineAudioContext || window.webkitOfflineAudioContext; if (!O) return; TAP.octx = new O(1, 1, TAP_SR); }
   fetch(url, { signal: ctrl.signal, cache: 'no-store' }).then(async r => {
-    if (!r.ok || !r.body) throw new Error('flux');
+    if (!r.ok || !r.body){ TAP.why = 'flux refusé (' + r.status + ')'; return; }
+    TAP.why = 'recherche des trames…';
     const rd = r.body.getReader();
     let pend = new Uint8Array(0);
     for (;;){
       const { value, done } = await rd.read();
       if (done || ctrl.signal.aborted) break;
+      TAP.seen += value.length;
       const nb = new Uint8Array(pend.length + value.length); nb.set(pend); nb.set(value, pend.length); pend = nb;
       const span = framesSpan(pend);
       if (span){
-        if (span[1] > span[0]) tapDecode(pend.slice(span[0], span[1]), ctrl);
+        if (span[1] > span[0]) tapDecode(pend.slice(span[0], span[1]), span[2], ctrl);
         pend = pend.slice(span[1]);
       }
-      if (pend.length > 1 << 19) pend = new Uint8Array(0);
+      if (pend.length > 1 << 19){ pend = new Uint8Array(0); TAP.why = 'aucune trame MP3/AAC reconnue'; }
     }
-  }).catch(() => {}).finally(() => {
+  }).catch(e => { if (!ctrl.signal.aborted) TAP.why = 'connexion refusée (serveur sans autorisation ?)'; }).finally(() => {
     /* Connexion perdue : nouvel essai dans 3 s si l'animation est toujours à l'écran */
     if (TAP.ctrl === ctrl){ TAP.ctrl = null; TAP.url = ''; TAP.retryAt = performance.now() + 3000; }
   });
 }
-function tapDecode(bytes, ctrl){
-  TAP.q = TAP.q.then(() => TAP.octx.decodeAudioData(bytes.buffer)).then(buf => {
+/* Chaque morceau occupe exactement sa durée théorique sur la frise, quel que soit le décodeur : Safari
+   ajoute parfois quelques millisecondes en tête (on garde la fin) ; un morceau illisible devient du silence. */
+function tapDecode(bytes, dur, ctrl){
+  const pos = TAP.queued, n = Math.round(dur * TAP_SR);
+  TAP.queued += n;
+  const put = pcm => {
     if (TAP.ctrl !== ctrl) return;
-    const pcm = buf.getChannelData(0);
-    for (let i = 0; i < pcm.length; i++) TAP.ring[(TAP.total + i) % TAP_CAP] = pcm[i];
-    TAP.total += pcm.length; TAP.wall = performance.now();
-  }).catch(() => {});
+    const off = pcm ? pcm.length - n : 0;
+    for (let i = 0; i < n; i++){ const k = off + i; TAP.ring[(pos + i) % TAP_CAP] = pcm && k >= 0 ? pcm[k] : 0; }
+    TAP.total = pos + n; TAP.wall = performance.now();
+  };
+  TAP.q = TAP.q.then(() => TAP.octx.decodeAudioData(bytes.buffer))
+    .then(buf => { TAP.ok++; put(buf.getChannelData(0)); }, () => { TAP.fails++; put(null); });
 }
 /* Spectre du moment entendu, au même format que l'analyseur de Web Audio */
 function tapSpectrum(){
@@ -1186,8 +1199,11 @@ function tapSpectrum(){
      l'échantillon (currentTime − (t0 − el0)). */
   if (TAP.el0 !== S.loadWall) return null;
   const heard = (audio.currentTime - (TAP.t0 - TAP.el0) / 1000 - 0.12) * TAP_SR;   /* 0,12 s : écart résiduel mesuré */
-  const end = Math.round(heard);
-  if (end < FFT_N || end > TAP.total || end < TAP.total - TAP_CAP + FFT_N) return null;
+  TAP.heard = heard / TAP_SR;
+  /* Jusqu'à 1 s au-delà de ce qui est reçu : on montre le plus récent */
+  const end = Math.round(Math.min(heard, TAP.total));
+  if (end < FFT_N || heard > TAP.total + TAP_SR || end < TAP.total - TAP_CAP + FFT_N){ TAP.why = 'moment entendu hors de la mémoire'; return null; }
+  TAP.why = TAP.fails && !TAP.ok ? 'décodage refusé par le navigateur' : 'ok';
   const { re, im, mag, data } = TAP;
   for (let i = 0; i < FFT_N; i++){ re[i] = TAP.ring[(end - FFT_N + i) % TAP_CAP] * FFT_WIN[i]; im[i] = 0; }
   fft(re, im);
@@ -1235,8 +1251,22 @@ function vizLoop(){
   if (VIZ.n++ % 60 === 0){ const st = getComputedStyle(document.documentElement); VIZ.color = st.getPropertyValue('--accent').trim(); VIZ.dim = st.getPropertyValue('--line').trim(); }
   const moving = vizUpdate();
   cs.forEach(vizDraw);
+  if (VIZ.n % 20 === 0 && !$('vizDiag').hidden) paintVizDiag();
   if (moving || S.want) VIZ.raf = requestAnimationFrame(vizLoop);
 }
+/* Diagnostic (toucher les diodes en mode conduite) : pourquoi elles bougent ou non */
+function paintVizDiag(){
+  const c = S.cands[S.ci];
+  let t;
+  if (!S.anim) t = 'Animation désactivée dans les réglages.';
+  else if (!S.want || S.status !== 'live') t = 'En attente de la lecture.';
+  else if (c && corsKnown(c.u) === false) t = 'Cette radio interdit l\'analyse de son son.';
+  else if (!tapMode()) t = 'Analyse directe : ' + (audio._fx ? 'active' : 'non branchée') + '.';
+  else t = `Écoute séparée : ${TAP.why || 'arrêtée'} · ${Math.round((TAP.seen || 0) / 1024)} Ko reçus · ${TAP.ok} morceaux lus, ${TAP.fails} refusés · reçu ${(TAP.total / TAP_SR).toFixed(1)} s, entendu ${(TAP.heard || 0).toFixed(1)} s`;
+  $('vizDiag').textContent = t;
+}
+$('dViz').addEventListener('click', () => { $('vizDiag').hidden = !$('vizDiag').hidden; paintVizDiag(); });
+
 /* Spectre du son entendu : analyseur Web Audio, ou écoute séparée (iPhone) */
 function vizSpectrum(){
   if (!(S.want && S.status === 'live')) return null;
@@ -1349,7 +1379,7 @@ if ('serviceWorker' in navigator){
   navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
   if (window.caches) caches.keys().then(ks => ks.filter(k => k.startsWith('ondes-v')).forEach(k => caches.delete(k))).catch(() => {});
 }
-window.__ondes = { S, processRaw, FX, EQ, VIZ, TAP, audio: () => audio, tapSpectrum };
+window.__ondes = { S, processRaw, FX, EQ, VIZ, TAP, audio: () => audio, tapSpectrum, candidates, framesSpan, frameAt, play, openDrive };
 })();
 </script>
 </body>

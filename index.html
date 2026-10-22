@@ -328,6 +328,10 @@ main{padding-block:8px calc(120px + var(--sab))}
       <input type="checkbox" id="sGoogle">
     </label>
     <label class="opt">
+      <span><b>Éviter les publicités de lancement</b><small>Pour les radios qui proposent une version HLS (surtout Radio France), l'iPhone la choisit : pas de publicité à chaque lancement, mais pas d'animation des diodes sur ces radios, et une qualité parfois un peu inférieure. Sans effet sur ordinateur.</small></span>
+      <input type="checkbox" id="sPreroll">
+    </label>
+    <label class="opt">
       <span><b>Animation des fréquences</b><small>Affiche des diodes qui suivent la voix et la musique en mode conduite et dans l'égaliseur. Certaines radios ne permettent pas d'analyser leur son : les diodes restent alors éteintes.</small></span>
       <input type="checkbox" id="sAnim">
     </label>
@@ -395,7 +399,7 @@ const S = {
   cands: [], ci: 0, want: false, ever: false, reloading: false, retry: 0, timer: 0, watch: 0, wake: null, wakeOn: false,
   googleLogos: LS.get('ondes.googleLogos', true),
   anim: LS.get('ondes.anim', !matchMedia('(prefers-reduced-motion: reduce)').matches), fxOff: false, cu: '',
-  vizTap: LS.get('ondes.vizTap', false)
+  vizTap: LS.get('ondes.vizTap', false), noPreroll: LS.get('ondes.noPreroll', true)
 };
 
 /* ---------- Données ----------
@@ -679,8 +683,9 @@ function scoreOf(c){
   let f = /FLAC/.test(codec) ? 10 : /AAC|OGG|OPUS/.test(codec) ? 1.35 : 1;
   let sc = b * f;
   if (c.h && !CAN_HLS) sc -= 1e6;
-  /* HLS (iPhone) : seulement à défaut de flux continu en https, que l'animation sait analyser */
-  if (c.h) sc -= 3e4;
+  /* HLS (iPhone) : en priorité si « Éviter les publicités de lancement » est actif (les flux continus en
+     diffusent souvent une à chaque connexion), sinon seulement à défaut de flux continu en https */
+  if (c.h) sc += CAN_HLS && S.noPreroll ? 1e5 : -3e4;
   if (c.up) sc -= 5e4;
   return sc;
 }
@@ -722,7 +727,8 @@ function corsKnown(u){ const c = CORS[hostOf(u)]; return c && Date.now() - c.t <
 function corsSet(u, ok){ const h = hostOf(u); if (!h || (CORS[h] && CORS[h].ok === ok)) return; CORS[h] = { ok, t: Date.now() }; LS.set('ondes.cors', CORS); }
 const FX = { ctx: null, pre: null, filters: [], an: null, data: null };
 function fxWanted(c){
-  if (!AC || S.fxOff || !c) return false;
+  /* HLS : Safari ne fournit pas ce son à Web Audio (risque de silence), on le joue tel quel */
+  if (!AC || S.fxOff || !c || c.h) return false;
   if (!eqOn() && !(S.anim && !tapMode())) return false;
   return corsKnown(c.u) !== false;
 }
@@ -1098,6 +1104,7 @@ function paintEqNote(){
   else if (!S.current || !S.want) t = 'Lance une radio pour entendre le réglage.';
   else if (audio._fx) t = 'Réglage appliqué à ' + S.current.name + '.';
   else if (corsKnown(S.cu) === false) t = S.current.name + ' ne permet pas de modifier son son : il est joué tel quel.';
+  else if (S.cands[S.ci] && S.cands[S.ci].h) t = 'Version HLS de ' + S.current.name + ' : égaliseur indisponible (voir « Éviter les publicités de lancement » dans les réglages).';
   else if (S.fxOff) t = 'Réglage en pause, il reviendra à la prochaine radio choisie.';
   $('eqNote').textContent = t;
 }
@@ -1119,7 +1126,7 @@ function tapSync(){
   const c = S.cands[S.ci];
   const want = tapMode() && S.anim && S.want && !!S.current && vizShown() && c && corsKnown(c.u) !== false;
   if (!want){ if (TAP.ctrl) tapStop(); return; }
-  if (c.h || /\.m3u8(\?|$)/i.test(c.u)){ if (TAP.ctrl) tapStop(); TAP.why = 'flux HLS (découpé en fichiers) : analyse impossible pour cette radio'; return; }
+  if (c.h || /\.m3u8(\?|$)/i.test(c.u)){ if (TAP.ctrl) tapStop(); TAP.why = 'flux HLS (découpé en fichiers) : analyse impossible pour cette radio' + (S.noPreroll ? ' (réglage « Éviter les publicités de lancement »)' : ''); return; }
   const url = tapUrl(c);
   if ((TAP.url !== url || TAP.el0 !== S.loadWall) && performance.now() >= TAP.retryAt) tapStart(url);
 }
@@ -1355,6 +1362,12 @@ $('sGoogle').onchange = e => {
   S.googleLogos = e.target.checked; LS.set('ondes.googleLogos', S.googleLogos);
   S.stations.concat(favList()).forEach(s => { delete s._li; });
   render(true); if (S.current) paintStation();
+};
+$('sPreroll').checked = S.noPreroll;
+$('sPreroll').onchange = e => {
+  S.noPreroll = e.target.checked; LS.set('ondes.noPreroll', S.noPreroll);
+  /* Radio en cours : on la relance sur le flux désormais préféré */
+  if (S.current){ const was = S.want; S.cands = candidates(S.current); S.ci = 0; if (was) play(S.current); else paintQuality(); }
 };
 $('sAnim').checked = S.anim;
 $('sAnim').onchange = e => { S.anim = e.target.checked; LS.set('ondes.anim', S.anim); fxRefresh(); vizStart(); };

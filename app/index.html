@@ -168,6 +168,18 @@ main{padding-block:8px calc(120px + var(--sab))}
 .opt small{color:var(--muted);font-size:14px}
 .opt input{flex:none;width:24px;height:24px;accent-color:var(--accent)}
 
+/* Animation des fréquences et égaliseur */
+.viz{display:block;width:min(340px,100%);height:clamp(36px,7vh,64px)}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sheet .viz{width:100%;height:72px;border-radius:14px;background:var(--bg)}
+.eq-presets{flex-wrap:wrap;overflow:visible;margin:0;padding:0}
+.eq-bands{display:grid;gap:6px}
+.band{display:grid;grid-template-columns:62px minmax(0,1fr) 58px;align-items:center;gap:10px;font-size:14px;font-variant-numeric:tabular-nums}
+.band span{color:var(--muted)}
+.band b{text-align:right;font-weight:600}
+.band input{width:100%;height:36px;margin:0;accent-color:var(--accent)}
+.eq-note:empty{display:none}
+
 .toast{position:fixed;left:50%;bottom:calc(100px + var(--sab));text-align:center;transform:translateX(-50%);z-index:60;max-width:calc(100% - 32px);
   background:var(--fg);color:var(--bg);padding:12px 16px;border-radius:12px;font-size:15px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.3)}
 .drive:not([hidden]) ~ .toast{bottom:auto;top:calc(64px + var(--sat))}
@@ -187,13 +199,14 @@ main{padding-block:8px calc(120px + var(--sab))}
   .drive{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);column-gap:24px;
     padding-block:calc(6px + var(--sat)) calc(10px + var(--sab))}
   .d-top{grid-column:1/-1}
-  .d-center{grid-column:1;grid-row:2;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:1fr auto auto auto 1fr;
+  .d-center{grid-column:1;grid-row:2;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:1fr auto auto auto auto 1fr;
     column-gap:20px;row-gap:10px;align-items:center;justify-items:start;text-align:left}
   .d-center .logo{grid-row:1/-1;width:min(52vh,240px);border-radius:24px}
   .d-center .logo.mono{font-size:48px}
   .d-name{grid-column:2;grid-row:2;font-size:clamp(24px,8vh,40px)}
   .d-status{grid-column:2;grid-row:3;justify-content:flex-start}
-  .dial{grid-column:2;grid-row:4;margin:0}
+  .d-center .viz{grid-column:2;grid-row:4;height:40px}
+  .dial{grid-column:2;grid-row:5;margin:0}
   .d-ctrls{grid-column:2;grid-row:2;align-self:center;padding-top:0}
   .d-ctrls .ctrl{width:min(84px,22vh);height:min(84px,22vh)}
   .d-ctrls .ctrl.main{width:min(112px,30vh);height:min(112px,30vh)}
@@ -219,6 +232,7 @@ main{padding-block:8px calc(120px + var(--sab))}
     <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 2.8 14 5l3-.4.7 3 2.6 1.6-1 2.8 1 2.8-2.6 1.6-.7 3-3-.4-2 2.2-2-2.2-3 .4-.7-3L3.7 14.8l1-2.8-1-2.8 2.6-1.6.7-3 3 .4Z"/></symbol>
     <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-eq" viewBox="0 0 24 24"><path d="M6 4v16M12 4v16M18 4v16" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".45"/><rect x="3.5" y="13" width="5" height="3.2" rx="1.6" fill="currentColor"/><rect x="9.5" y="6.5" width="5" height="3.2" rx="1.6" fill="currentColor"/><rect x="15.5" y="10.5" width="5" height="3.2" rx="1.6" fill="currentColor"/></symbol>
     <symbol id="i-car" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M4 16v-4l2-5h12l2 5v4M4 16h16v2H4zM4 12h16"/><circle cx="8" cy="14" r="1" fill="currentColor"/><circle cx="16" cy="14" r="1" fill="currentColor"/></symbol>
   </defs>
 </svg>
@@ -227,6 +241,7 @@ main{padding-block:8px calc(120px + var(--sab))}
   <div class="top">
     <div class="brand"><i></i>Ondes <small id="count">Chargement…</small></div>
     <div class="sp"></div>
+    <button class="icon-btn" id="btnEq" aria-label="Égaliseur"><svg><use href="#i-eq"/></svg></button>
     <button class="icon-btn" id="btnDrive" aria-label="Mode conduite"><svg><use href="#i-car"/></svg></button>
     <button class="icon-btn" id="btnSettings" aria-label="Réglages"><svg><use href="#i-gear"/></svg></button>
   </div>
@@ -266,12 +281,14 @@ main{padding-block:8px calc(120px + var(--sab))}
     <button class="icon-btn" id="dClose" aria-label="Fermer"><svg><use href="#i-down"/></svg></button>
     <div class="sp"></div>
     <button class="pill" id="dWake" aria-pressed="false"><svg><use href="#i-sun"/></svg>Écran allumé</button>
+    <button class="icon-btn" id="dEq" aria-label="Égaliseur"><svg><use href="#i-eq"/></svg></button>
     <button class="icon-btn" id="dFav" aria-label="Favori"><svg><use href="#i-heart"/></svg></button>
   </div>
   <div class="d-center" id="dCenter">
     <span class="logo" id="dLogo"></span>
     <div class="d-name" id="dName"></div>
     <div class="d-status"><span class="dot" id="dDot"></span><span id="dStatus"></span><span class="badge" id="dQual"></span></div>
+    <canvas class="viz" id="dViz" aria-hidden="true"></canvas>
     <div class="dial" aria-hidden="true">
       <div class="dial-scale"><div class="needle" id="needle"></div></div>
       <div class="dial-legend"><span id="dPos"></span><span id="dList"></span></div>
@@ -307,7 +324,25 @@ main{padding-block:8px calc(120px + var(--sab))}
       <span><b>Logos complémentaires</b><small>Pour les radios dont le logo manque, demande l'icône de leur site au service de Google, qui reçoit alors l'adresse de ces sites. Désactivée, environ une radio sur quatre n'affiche que ses initiales.</small></span>
       <input type="checkbox" id="sGoogle">
     </label>
+    <label class="opt">
+      <span><b>Animation des fréquences</b><small>Affiche des diodes qui suivent la voix et la musique en mode conduite et dans l'égaliseur.</small></span>
+      <input type="checkbox" id="sAnim">
+    </label>
     <button class="btn" id="sClose">Fermer</button>
+  </div>
+</div>
+
+<div class="sheet-bg" id="eqBg" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="eqTitle">
+    <div class="sheet-head">
+      <h2 id="eqTitle">Égaliseur</h2>
+      <button class="icon-btn" id="eqClose" aria-label="Fermer"><svg><use href="#i-x"/></svg></button>
+    </div>
+    <canvas class="viz" id="eqViz" aria-hidden="true"></canvas>
+    <div class="chips eq-presets" id="eqPresets" role="group" aria-label="Préréglages"></div>
+    <div class="eq-bands" id="eqBands"></div>
+    <p class="eq-note" id="eqNote"></p>
+    <button class="btn" id="eqReset">Remettre à plat</button>
   </div>
 </div>
 
@@ -355,7 +390,8 @@ const S = {
   filter: null, region: '', sort: LS.get('ondes.sort', 'pop'), q: '',
   list: [], rendered: 0, current: null, queue: [],
   cands: [], ci: 0, want: false, ever: false, reloading: false, retry: 0, timer: 0, watch: 0, wake: null, wakeOn: false,
-  googleLogos: LS.get('ondes.googleLogos', true)
+  googleLogos: LS.get('ondes.googleLogos', true),
+  anim: LS.get('ondes.anim', !matchMedia('(prefers-reduced-motion: reduce)').matches), fxOff: false, cu: ''
 };
 
 /* ---------- Données ----------
@@ -651,11 +687,101 @@ function candidates(s){
   }
   return arr.sort((a, b) => scoreOf(b) - scoreOf(a));
 }
+/* ---------- Son : égaliseur et analyse ----------
+   Le son passe par Web Audio seulement quand c'est utile (égaliseur réglé, ou animation hors iPhone)
+   et si le serveur de la radio l'autorise (CORS). Sinon il est joué tel quel, comme avant. */
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const AC = window.AudioContext || window.webkitAudioContext;
+const BANDS = [60, 150, 400, 1000, 2400, 6000, 15000];
+const PRESETS = [
+  ['flat', 'Neutre', [0, 0, 0, 0, 0, 0, 0]],
+  ['music', 'Musique', [4, 2, -1, 0, 1, 3, 4]],
+  ['voice', 'Voix', [-4, -2, 1, 3, 4, 2, 0]],
+  ['bass', 'Basses', [6, 4, 1, 0, 0, 0, 1]],
+  ['ultra', 'Ultra-basses', [10, 7, 2, -1, 0, 0, 1]],
+  ['custom', 'Personnalisé', null]
+];
+const EQ = Object.assign({ p: 'flat', custom: BANDS.map(() => 0) }, LS.get('ondes.eq', {}));
+if (!Array.isArray(EQ.custom) || EQ.custom.length !== BANDS.length) EQ.custom = BANDS.map(() => 0);
+if (!PRESETS.some(p => p[0] === EQ.p)) EQ.p = 'flat';
+const eqGains = () => EQ.p === 'custom' ? EQ.custom : PRESETS.find(p => p[0] === EQ.p)[2];
+const eqOn = () => eqGains().some(g => g !== 0);
+const eqSave = () => LS.set('ondes.eq', { p: EQ.p, custom: EQ.custom });
+/* Serveurs qui autorisent ou refusent l'analyse du son, retenus 7 jours */
+const CORS = LS.get('ondes.cors', {});
+const hostOf = u => { try { return new URL(u).host; } catch { return ''; } };
+function corsKnown(u){ const c = CORS[hostOf(u)]; return c && Date.now() - c.t < 7 * DAY ? c.ok : undefined; }
+function corsSet(u, ok){ const h = hostOf(u); if (!h || (CORS[h] && CORS[h].ok === ok)) return; CORS[h] = { ok, t: Date.now() }; LS.set('ondes.cors', CORS); }
+const FX = { ctx: null, pre: null, filters: [], an: null, data: null };
+function fxWanted(c){
+  if (!AC || S.fxOff || !c) return false;
+  if (!eqOn() && !(S.anim && !IS_IOS)) return false;
+  return corsKnown(c.u) !== false;
+}
+function fxChain(){
+  if (FX.ctx) return FX.ctx;
+  const ctx = FX.ctx = new AC();
+  FX.pre = ctx.createGain();
+  FX.filters = BANDS.map((f, i) => {
+    const b = ctx.createBiquadFilter();
+    b.type = i === 0 ? 'lowshelf' : i === BANDS.length - 1 ? 'highshelf' : 'peaking';
+    b.frequency.value = f; b.Q.value = 1.1;
+    return b;
+  });
+  /* Limiteur : empêche la saturation quand on pousse les basses */
+  const lim = ctx.createDynamicsCompressor();
+  lim.threshold.value = -2; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.003; lim.release.value = 0.25;
+  FX.an = ctx.createAnalyser(); FX.an.fftSize = 2048; FX.an.smoothingTimeConstant = 0.55;
+  FX.an.minDecibels = -90; FX.an.maxDecibels = -20;
+  FX.data = new Uint8Array(FX.an.frequencyBinCount);
+  [FX.pre, ...FX.filters, lim, FX.an, ctx.destination].reduce((a, b) => { a.connect(b); return b; });
+  applyEq();
+  return ctx;
+}
+function applyEq(){
+  if (!FX.ctx) return;
+  const g = eqGains(), t = FX.ctx.currentTime;
+  FX.filters.forEach((f, i) => f.gain.setTargetAtTime(g[i], t, 0.03));
+  /* Pré-atténuation : compense en partie les fréquences poussées */
+  FX.pre.gain.setTargetAtTime(Math.pow(10, -Math.max(0, ...g) * 0.6 / 20), t, 0.03);
+}
+function fxAttach(el){
+  try {
+    const ctx = fxChain();
+    el.crossOrigin = 'anonymous';
+    el._src = ctx.createMediaElementSource(el);
+    el._src.connect(FX.pre);
+    el._fx = true;
+    if (ctx.state !== 'running') ctx.resume().catch(() => {});
+  } catch { el._fx = false; el.removeAttribute('crossorigin'); }
+}
+/* Contexte audio bloqué (onglet en arrière-plan, iPhone…) : on repasse en son direct plutôt que de jouer en silence */
+function fxCheck(){
+  if (!audio._fx || !FX.ctx || FX.ctx.state === 'running') return;
+  FX.ctx.resume().catch(() => {});
+  setTimeout(() => {
+    if (audio._fx && S.want && FX.ctx.state !== 'running'){
+      S.fxOff = true; S.reloading = true; load();
+      toast('Égaliseur indisponible pour le moment : son joué tel quel.');
+    }
+  }, 1500);
+}
+/* L'égaliseur ou l'animation change d'état : on rebranche le flux en cours si besoin */
+function fxRefresh(){
+  if (!S.want || !S.current) return;
+  S.fxOff = false;
+  if (!!audio._fx !== fxWanted(S.cands[S.ci])){ S.reloading = true; load(); }
+  else if (FX.ctx && FX.ctx.state !== 'running') FX.ctx.resume().catch(() => {});
+}
+
 /* iPhone : session audio « lecture » (son même en mode silencieux, continue écran verrouillé) */
 function audioSession(){ try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {} }
 /* Lecteur neuf à chaque station choisie : évite un lecteur iOS resté muet */
 const AUDIO_EVENTS = {
-  playing: () => { clearTimeout(S.watch); S.reloading = false; S.retry = 0; S.ever = true; setStatus('live'); },
+  playing: () => {
+    clearTimeout(S.watch); S.reloading = false; S.retry = 0; S.ever = true; setStatus('live');
+    if (audio._fx){ corsSet(S.cu, true); fxCheck(); }
+  },
   waiting: () => { if (S.want){ setStatus('buffering'); armWatch(12000); } },
   stalled: () => { if (S.want) armWatch(12000); },
   error: () => { if (S.want && audio.getAttribute('src')) onFail(); },
@@ -672,13 +798,14 @@ function freshAudio(){
   bindAudio(el);
   audio = el;
   try { old.pause(); old.removeAttribute('src'); old.load(); } catch {}
+  try { if (old._src) old._src.disconnect(); } catch {}
   old.replaceWith(el);
 }
 function play(s, queue){
   audioSession(); freshAudio();
   S.current = s;
   if (queue && queue.length) S.queue = queue.map(x => x.id);
-  S.cands = candidates(s); S.ci = 0; S.retry = 0; S.ever = false; S.want = true;
+  S.cands = candidates(s); S.ci = 0; S.retry = 0; S.ever = false; S.want = true; S.fxOff = false;
   LS.set('ondes.last', s.id);
   $('player').hidden = false;
   load(); paintStation(); markTiles(); countClick(s);
@@ -689,6 +816,11 @@ function load(){
   if (!c){ return giveUp(); }
   S.reloading = true;
   setStatus(S.ever ? 'reconnect' : 'connecting');
+  /* Lecteur branché sur l'égaliseur ou non : un lecteur déjà branché ne peut plus être débranché */
+  const fx = fxWanted(c);
+  if (!!audio._fx !== fx) freshAudio();
+  if (fx && !audio._fx) fxAttach(audio);
+  S.cu = c.u;
   audio.src = c.u;
   const p = audio.play();
   if (p) p.catch(err => {
@@ -712,6 +844,8 @@ function onFail(){
     S.timer = setTimeout(() => { if (!S.want) return; if (navigator.onLine){ S.retry = 0; load(); } else onFail(); }, 5000);
     return;
   }
+  /* Le serveur refuse l'analyse du son (CORS) : on rejoue le même flux, tel quel */
+  if (audio._fx && corsKnown(S.cu) !== true){ corsSet(S.cu, false); S.timer = setTimeout(load, 50); return; }
   if (!S.ever){
     S.ci++;
     if (S.ci >= S.cands.length) return giveUp();
@@ -771,6 +905,8 @@ const STATUS = {
 };
 function setStatus(k){
   S.status = k;
+  if (!$('eqBg').hidden) paintEqNote();
+  if (k === 'live') vizStart();
   const [txt, cls] = STATUS[k];
   for (const p of ['p', 'd']){
     $(p + 'Status').textContent = txt;
@@ -852,22 +988,28 @@ function openDrive(){
   if (S.wakeOn) wakeOn();
 }
 function closeDrive(){ if (!$('drive').hidden) closeLayer(); }
-/* Mode conduite et réglages s'ouvrent comme une page : le bouton retour d'Android les ferme
-   au lieu de quitter l'app. Quitter le mode conduite rend aussi la veille de l'écran. */
-function showLayer(name){
-  $('drive').hidden = name !== 'drive';
-  $('sheetBg').hidden = name !== 'sheet';
-  if (name !== 'drive' && S.wake){ S.wake.release().catch(() => {}); S.wake = null; }
+/* Mode conduite, réglages et égaliseur s'ouvrent comme une page : le bouton retour d'Android les ferme
+   au lieu de quitter l'app. L'égaliseur peut s'ouvrir par-dessus le mode conduite (« under »).
+   Quitter le mode conduite rend aussi la veille de l'écran. */
+const LAYERS = { drive: 'drive', sheet: 'sheetBg', eq: 'eqBg' };
+function showLayer(st){
+  const on = new Set(st ? [st.layer, st.under] : []);
+  for (const [k, id] of Object.entries(LAYERS)) $(id).hidden = !on.has(k);
+  if (!on.has('drive') && S.wake){ S.wake.release().catch(() => {}); S.wake = null; }
+  if (on.has('eq')) paintEq();
+  vizStart();
 }
 function openLayer(name){
-  if (history.state && history.state.layer) history.replaceState({ layer: name }, '');
-  else history.pushState({ layer: name }, '');
-  showLayer(name);
+  const cur = history.state && history.state.layer;
+  if (cur === name) return;
+  const st = { layer: name, under: cur || null };
+  history.pushState(st, '');
+  showLayer(st);
 }
 function closeLayer(){
   if (history.state && history.state.layer) history.back(); else showLayer(null);
 }
-window.addEventListener('popstate', e => showLayer((e.state && e.state.layer) || null));
+window.addEventListener('popstate', e => showLayer(e.state && e.state.layer ? e.state : null));
 if (history.state && history.state.layer) history.replaceState(null, '');
 async function wakeOn(){
   try { S.wake = await navigator.wakeLock.request('screen'); S.wake.addEventListener('release', () => { S.wake = null; }); }
@@ -881,6 +1023,11 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible'){
     if (S.wakeOn && !S.wake && !$('drive').hidden) wakeOn();
     if (S.want && audio.paused && !S.reloading) load();
+    vizStart();
+  } else if (IS_IOS && audio._fx && S.want){
+    /* iPhone : le traitement du son peut être suspendu écran verrouillé. On repasse en son direct
+       pour que la radio continue ; l'égaliseur revient à la prochaine radio choisie. */
+    S.fxOff = true; S.reloading = true; load();
   }
 });
 let tx = 0, ty = 0;
@@ -890,6 +1037,118 @@ $('dCenter').addEventListener('touchend', e => {
   if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) step(dx < 0 ? 1 : -1);
   else if (dy > 120 && Math.abs(dy) > Math.abs(dx) * 1.5) closeDrive();
 }, { passive: true });
+
+/* ---------- Égaliseur ---------- */
+const fmtDb = g => (g > 0 ? '+' : g < 0 ? '−' : '') + Math.abs(g) + ' dB';
+const fmtHz = f => f >= 1000 ? (f / 1000).toString().replace('.', ',') + ' kHz' : f + ' Hz';
+function buildEq(){
+  const box = $('eqPresets');
+  PRESETS.forEach(([id, label]) => {
+    const b = document.createElement('button');
+    b.className = 'chip'; b.textContent = label; b.dataset.id = id;
+    b.onclick = () => setPreset(id);
+    box.appendChild(b);
+  });
+  const bands = $('eqBands');
+  BANDS.forEach((f, i) => {
+    const row = document.createElement('label');
+    row.className = 'band';
+    row.innerHTML = `<span></span><input type="range" min="-12" max="12" step="1"><b></b>`;
+    row.querySelector('span').textContent = fmtHz(f);
+    const input = row.querySelector('input');
+    input.setAttribute('aria-label', 'Réglage ' + fmtHz(f));
+    input.oninput = () => {
+      if (EQ.p !== 'custom'){ EQ.custom = eqGains().slice(); EQ.p = 'custom'; }
+      EQ.custom[i] = +input.value;
+      eqChanged();
+    };
+    bands.appendChild(row);
+  });
+}
+function setPreset(id){ EQ.p = id; eqChanged(); }
+function eqChanged(){ eqSave(); applyEq(); fxRefresh(); paintEq(); }
+function paintEq(){
+  $('eqPresets').querySelectorAll('.chip').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === EQ.p));
+  const g = eqGains();
+  $('eqBands').querySelectorAll('.band').forEach((row, i) => {
+    const input = row.querySelector('input');
+    if (+input.value !== g[i]) input.value = g[i];
+    row.querySelector('b').textContent = fmtDb(g[i]);
+  });
+  paintEqNote();
+}
+function paintEqNote(){
+  let t = '';
+  if (!AC) t = 'Ton navigateur ne permet pas de régler le son.';
+  else if (!eqOn()) t = 'Choisis un préréglage ou déplace les curseurs.';
+  else if (!S.current || !S.want) t = 'Lance une radio pour entendre le réglage.';
+  else if (audio._fx) t = 'Réglage appliqué à ' + S.current.name + '.';
+  else if (corsKnown(S.cu) === false) t = S.current.name + ' ne permet pas de modifier son son : il est joué tel quel.';
+  else if (S.fxOff) t = 'Réglage en pause, il reviendra à la prochaine radio choisie.';
+  $('eqNote').textContent = t;
+}
+
+/* ---------- Animation façon K2000 ----------
+   Colonnes de diodes en miroir : basses au centre, aigus vers les bords.
+   Quand le son ne peut pas être analysé (radio sans CORS, iPhone), l'animation suit un mouvement simulé. */
+const VIZ = { half: 7, segs: 6, v: new Float32Array(8), raf: 0, color: '', dim: '', n: 0 };
+function vizCanvases(){ return [$('dViz'), $('eqViz')].filter(c => c.offsetParent !== null); }
+function vizStart(){ if (!VIZ.raf && S.anim && document.visibilityState === 'visible') VIZ.raf = requestAnimationFrame(vizLoop); }
+function vizLoop(ts){
+  VIZ.raf = 0;
+  const cs = vizCanvases();
+  if (!cs.length || !S.anim) return;
+  if (VIZ.n++ % 60 === 0){ const st = getComputedStyle(document.documentElement); VIZ.color = st.getPropertyValue('--accent').trim(); VIZ.dim = st.getPropertyValue('--line').trim(); }
+  const moving = vizUpdate(ts / 1000);
+  cs.forEach(vizDraw);
+  if (moving || S.want) VIZ.raf = requestAnimationFrame(vizLoop);
+}
+function vizUpdate(t){
+  const n = VIZ.v.length, live = S.want && S.status === 'live';
+  const real = live && audio._fx && FX.an && FX.ctx.state === 'running';
+  if (real) FX.an.getByteFrequencyData(FX.data);
+  const binHz = real ? FX.ctx.sampleRate / FX.an.fftSize : 1;
+  let moving = false;
+  for (let k = 0; k < n; k++){
+    let target = 0;
+    if (real){
+      /* Bandes logarithmiques de 50 Hz à 12 kHz */
+      const lo = 50 * Math.pow(240, k / n), hi = 50 * Math.pow(240, (k + 1) / n);
+      let a = Math.floor(lo / binHz), b = Math.max(a + 1, Math.floor(hi / binHz)), sum = 0;
+      for (let i = a; i < b; i++) sum += FX.data[i];
+      target = Math.min(1, Math.max(0, (sum / (b - a) / 255 - 0.15) / 0.75));
+    } else if (live){
+      const env = 0.55 + 0.45 * Math.sin(t * 4.7) * Math.sin(t * 1.3 + 0.6);
+      target = Math.max(0, env * (0.55 + 0.3 * Math.sin(t * (2.3 + k * 0.37) + k * 1.7)) - k * 0.035 + (Math.random() - 0.5) * 0.15);
+    }
+    const v = VIZ.v[k];
+    VIZ.v[k] = target > v ? v + (target - v) * 0.6 : v * 0.88 + target * 0.12;
+    if (VIZ.v[k] > 0.01) moving = true;
+  }
+  return moving;
+}
+function vizDraw(cv){
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)){ cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const cols = VIZ.half * 2 + 1, segs = VIZ.segs;
+  const cw = w / cols, bw = cw * 0.62, sh = h / (segs * 2 + 1), bh = sh * 0.6;
+  for (let j = 0; j < cols; j++){
+    const d = Math.abs(j - VIZ.half);
+    const lvl = VIZ.v[d] * (1 - d * 0.03);
+    const lit = Math.round(lvl * segs);
+    const x = j * cw + (cw - bw) / 2;
+    for (let s = -segs; s <= segs; s++){
+      const on = Math.abs(s) <= lit && (lit > 0 || s === 0) && lvl > 0.02;
+      g.globalAlpha = on ? 1 - Math.abs(s) / (segs + 3) : 0.35;
+      g.fillStyle = on ? VIZ.color : VIZ.dim;
+      g.shadowColor = VIZ.color; g.shadowBlur = on ? 8 : 0;
+      g.fillRect(x, h / 2 + s * sh - bh / 2, bw, bh);
+    }
+  }
+  g.globalAlpha = 1; g.shadowBlur = 0;
+}
 
 /* ---------- Divers ---------- */
 let toastT = 0;
@@ -925,8 +1184,16 @@ $('sGoogle').onchange = e => {
   S.stations.concat(favList()).forEach(s => { delete s._li; });
   render(true); if (S.current) paintStation();
 };
+$('sAnim').checked = S.anim;
+$('sAnim').onchange = e => { S.anim = e.target.checked; LS.set('ondes.anim', S.anim); fxRefresh(); vizStart(); };
+$('btnEq').onclick = () => openLayer('eq');
+$('dEq').onclick = () => openLayer('eq');
+$('eqClose').onclick = closeLayer;
+$('eqBg').onclick = e => { if (e.target === $('eqBg')) closeLayer(); };
+$('eqReset').onclick = () => setPreset('flat');
+buildEq();
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && (!$('sheetBg').hidden || !$('drive').hidden)) closeLayer();
+  if (e.key === 'Escape' && Object.values(LAYERS).some(id => !$(id).hidden)) closeLayer();
   if (e.key === ' ' && e.target === document.body){ e.preventDefault(); toggle(); }
 });
 
@@ -943,7 +1210,7 @@ if ('serviceWorker' in navigator){
   navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
   if (window.caches) caches.keys().then(ks => ks.filter(k => k.startsWith('ondes-v')).forEach(k => caches.delete(k))).catch(() => {});
 }
-window.__ondes = { S, processRaw };
+window.__ondes = { S, processRaw, FX, EQ, VIZ, audio: () => audio };
 })();
 </script>
 </body>

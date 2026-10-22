@@ -55,7 +55,8 @@ function mergeStation(id, items){
   const tags = new Set(), regions = {};
   for (const r of items){
     const u = urlOf(r);
-    const m = u.match(/^https?:\/\/icecast\.radiofrance\.fr\/([a-z0-9_]+?)-(?:lofi|midfi|hifi)\.(?:mp3|aac)/i);
+    /* Radio France : adresse directe d'icecast (les anciennes adresses direct.*.fr redirigent, ce qui bloque l'égaliseur) */
+    const m = u.match(/^https?:\/\/(?:icecast\.radiofrance\.fr|direct\.[a-z]+\.fr\/live)\/([a-z0-9_]+?)-(?:lofi|midfi|hifi)\.(?:mp3|aac)/i);
     if (m){ rf = true; add(`https://icecast.radiofrance.fr/${m[1]}-hifi.aac`, 'AAC', 192, 0); }
     add(u, (r.codec || '').toUpperCase().replace('UNKNOWN', ''), +r.bitrate || 0, r.hls ? 1 : 0);
     if (!logo && r.favicon && /^https?:\/\//i.test(r.favicon)) logo = r.favicon.trim().replace(/^http:/i, 'https:');

@@ -13,6 +13,8 @@ Aucune version publique n'est proposée : chacun héberge sa propre copie, gratu
 - **Meilleure qualité disponible** : pour chaque station, le flux au débit le plus élevé est choisi automatiquement (AAC privilégié, **HiFi 192 kbps** pour Radio France). Le son est joué tel quel, sans recompression.
 - **Lecture écran verrouillé** : commandes sur l'écran de verrouillage, compatibles avec les boutons du volant en Bluetooth (station suivante et précédente).
 - **Mode conduite** : plein écran, boutons géants, changement de station en glissant le doigt, option « écran allumé ».
+- **Égaliseur** : bouton à curseurs en haut de l'écran et en mode conduite. Préréglages Neutre, Musique, Voix, Basses, Ultra-basses, ou réglage manuel sur 7 bandes (60 Hz à 15 kHz, ±12 dB), avec un limiteur qui évite la saturation. Il ne s'applique qu'aux radios dont le serveur l'autorise (environ trois sur quatre) ; les autres sont jouées telles quelles. Sur iPhone, il se coupe quand l'écran se verrouille pour que la radio continue, et revient à la radio suivante.
+- **Animation des fréquences** : colonnes de diodes façon K2000 qui suivent la voix et la musique, en mode conduite et dans l'égaliseur. Quand le son ne peut pas être analysé (radio qui ne l'autorise pas, iPhone sans égaliseur), l'animation suit un mouvement simulé. Désactivable dans les réglages.
 - **Favoris** : affichés à l'ouverture et enregistrés de façon fiable (fusion entre fenêtres, copie de secours).
 - **Recherche et filtres** : catégories (Info, Hits, Années 80-90, Rock, Électro, Rap & RnB, Jazz & Classique, Sport, Radio France), région, tri par popularité ou de A à Z.
 - **Reconnexion automatique** après un tunnel ou une perte de réseau, avec bascule sur un flux de secours si nécessaire.

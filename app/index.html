@@ -188,6 +188,8 @@ main{padding-block:8px calc(120px + var(--sab))}
 .band span{color:var(--muted)}
 .band b{text-align:right;font-weight:600}
 .band input{width:100%;height:36px;margin:0;accent-color:var(--accent)}
+.band.boost{padding-top:8px;border-top:1px solid var(--line)}
+.band.boost span{color:var(--fg);font-weight:600}
 .eq-note:empty{display:none}
 .viz-diag{font-size:12px;color:var(--muted);max-width:min(340px,100%);text-align:center;font-variant-numeric:tabular-nums}
 
@@ -338,7 +340,7 @@ main{padding-block:8px calc(120px + var(--sab))}
       <input type="checkbox" id="sGoogle">
     </label>
     <label class="opt">
-      <span><b>Éviter les publicités de lancement</b><small>Pour les radios qui proposent une version HLS (surtout Radio France), l'iPhone la choisit : pas de publicité à chaque lancement, mais pas d'animation des diodes sur ces radios, et une qualité parfois un peu inférieure. Sans effet sur ordinateur.</small></span>
+      <span><b>Éviter les publicités de lancement</b><small>Pour les radios qui proposent une version HLS (surtout Radio France), l'iPhone la choisit : pas de publicité à chaque lancement, mais une qualité parfois un peu inférieure, et les diodes ne s'y allument que si l'égaliseur ou le volume est réglé. Sans effet sur ordinateur.</small></span>
       <input type="checkbox" id="sPreroll">
     </label>
     <label class="opt">
@@ -358,6 +360,7 @@ main{padding-block:8px calc(120px + var(--sab))}
     <canvas class="viz" id="eqViz" aria-hidden="true"></canvas>
     <div class="chips eq-presets" id="eqPresets" role="group" aria-label="Préréglages"></div>
     <div class="eq-bands" id="eqBands"></div>
+    <label class="band boost"><span>Volume</span><input type="range" id="eqBoost" min="0" max="12" step="1" aria-label="Volume renforcé"><b id="eqBoostV"></b></label>
     <p class="eq-note" id="eqNote"></p>
     <button class="btn" id="eqReset">Remettre à plat</button>
   </div>
@@ -770,7 +773,8 @@ function candidates(s){
    Le son passe par Web Audio seulement quand c'est utile (égaliseur réglé, ou animation hors « mode
    écoute séparée ») et si le serveur de la radio l'autorise (CORS). Sinon il est joué tel quel.
    Sur iPhone, Web Audio ne fournit pas le son des radios en direct (signal nul) : l'animation y
-   utilise une écoute séparée du flux (voir « Analyse par seconde connexion »). */
+   utilise une écoute séparée du flux (voir « Analyse par seconde connexion »), l'égaliseur et le
+   volume le lecteur maison (voir « Lecteur maison »). */
 const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const AC = window.AudioContext || window.webkitAudioContext;
 const BANDS = [60, 150, 400, 1000, 2400, 6000, 15000];
@@ -786,21 +790,32 @@ const EQ = Object.assign({ p: 'flat', custom: BANDS.map(() => 0) }, LS.get('onde
 if (!Array.isArray(EQ.custom) || EQ.custom.length !== BANDS.length) EQ.custom = BANDS.map(() => 0);
 if (!PRESETS.some(p => p[0] === EQ.p)) EQ.p = 'flat';
 const eqGains = () => EQ.p === 'custom' ? EQ.custom : PRESETS.find(p => p[0] === EQ.p)[2];
+/* Volume renforcé : 0 à +12 dB avant le limiteur (les flux internet sont moins « poussés » que la FM) */
+EQ.boost = Math.max(0, Math.min(12, Math.round(+EQ.boost || 0)));
 const eqOn = () => eqGains().some(g => g !== 0);
-const eqSave = () => LS.set('ondes.eq', { p: EQ.p, custom: EQ.custom });
+const tuned = () => eqOn() || EQ.boost > 0;
+const eqSave = () => LS.set('ondes.eq', { p: EQ.p, custom: EQ.custom, boost: EQ.boost });
 /* Serveurs qui autorisent ou refusent l'analyse du son, retenus 7 jours */
 const CORS = LS.get('ondes.cors', {});
 const hostOf = u => { try { return new URL(u).host; } catch { return ''; } };
 function corsKnown(u){ const c = CORS[hostOf(u)]; return c && Date.now() - c.t < 7 * DAY ? c.ok : undefined; }
 function corsSet(u, ok){ const h = hostOf(u); if (!h || (CORS[h] && CORS[h].ok === ok)) return; CORS[h] = { ok, t: Date.now() }; LS.set('ondes.cors', CORS); }
 const FX = { ctx: null, pre: null, filters: [], an: null, data: null };
+/* Comment jouer la radio : '' lecteur seul, 'el' lecteur branché sur Web Audio, 'pcm' lecteur maison */
 function fxWanted(c){
-  /* HLS : Safari ne fournit pas ce son à Web Audio (risque de silence), on le joue tel quel */
-  if (!AC || S.fxOff || !c || c.h) return false;
-  if (!eqOn() && !(S.anim && !tapMode())) return false;
-  return corsKnown(c.u) !== false;
+  if (!AC || S.fxOff || !c) return '';
+  if (tapMode()){
+    /* iPhone : lecteur maison seulement si l'égaliseur ou le volume est réglé (une fois lancé, il reste
+       sur cette radio même remise à plat, pour éviter une reconnexion) */
+    if (!tuned() && !(PCM.on && S.current && PCM.sid === S.current.id)) return '';
+    return corsKnown(c.u) !== false && !pcmBad(c.u) ? 'pcm' : '';
+  }
+  /* HLS : non lu par les ordinateurs, et Safari ne le fournit pas à Web Audio */
+  if (c.h || (!tuned() && !S.anim)) return '';
+  return corsKnown(c.u) !== false ? 'el' : '';
 }
-/* Écoute séparée pour l'animation : toujours sur iPhone, ailleurs si Web Audio a renvoyé un signal nul */
+/* Web Audio ne reçoit pas le son du lecteur : toujours sur iPhone, ailleurs si un signal nul a été constaté.
+   L'animation y passe par l'écoute séparée, l'égaliseur et le volume par le lecteur maison. */
 const tapMode = () => IS_IOS || S.vizTap;
 /* L'animation est à l'écran : mode conduite ou égaliseur ouverts, appli au premier plan */
 const vizShown = () => document.visibilityState === 'visible' && (!$('drive').hidden || !$('eqBg').hidden);
@@ -828,8 +843,8 @@ function applyEq(){
   if (!FX.ctx) return;
   const g = eqGains(), t = FX.ctx.currentTime;
   FX.filters.forEach((f, i) => f.gain.setTargetAtTime(g[i], t, 0.03));
-  /* Pré-atténuation : compense en partie les fréquences poussées */
-  FX.pre.gain.setTargetAtTime(Math.pow(10, -Math.max(0, ...g) * 0.6 / 20), t, 0.03);
+  /* Volume renforcé, moins une pré-atténuation qui compense en partie les fréquences poussées */
+  FX.pre.gain.setTargetAtTime(Math.pow(10, (EQ.boost - Math.max(0, ...g) * 0.6) / 20), t, 0.03);
 }
 function fxAttach(el){
   try {
@@ -842,11 +857,14 @@ function fxAttach(el){
   } catch { el._fx = false; el.removeAttribute('crossorigin'); }
 }
 /* Contexte audio bloqué (onglet en arrière-plan, iPhone…) : on repasse en son direct plutôt que de jouer en silence */
+const fxActive = () => PCM.on ? 'pcm' : audio._fx ? 'el' : '';
 function fxCheck(){
-  if (!audio._fx || !FX.ctx || FX.ctx.state === 'running') return;
+  if (!fxActive() || !FX.ctx || FX.ctx.state === 'running' || FX.checking) return;
+  FX.checking = true;
   FX.ctx.resume().catch(() => {});
   setTimeout(() => {
-    if (audio._fx && S.want && FX.ctx.state !== 'running'){
+    FX.checking = false;
+    if (fxActive() && S.want && FX.ctx.state !== 'running'){
       S.fxOff = true; S.reloading = true; load();
       toast('Égaliseur indisponible pour le moment : son joué tel quel.');
     }
@@ -856,7 +874,7 @@ function fxCheck(){
 function fxRefresh(){
   if (!S.want || !S.current) return;
   S.fxOff = false;
-  if (!!audio._fx !== fxWanted(S.cands[S.ci])){ S.reloading = true; load(); }
+  if (fxActive() !== fxWanted(S.cands[S.ci])){ S.reloading = true; load(); }
   else if (FX.ctx && FX.ctx.state !== 'running') FX.ctx.resume().catch(() => {});
 }
 
@@ -891,7 +909,7 @@ function play(s, queue){
   audioSession(); freshAudio();
   S.current = s;
   if (queue && queue.length) S.queue = queue.map(x => x.id);
-  S.cands = candidates(s); S.ci = 0; S.retry = 0; S.ever = false; S.want = true; S.fxOff = false;
+  S.cands = candidates(s); S.ci = 0; S.retry = 0; S.ever = false; S.want = true; S.fxOff = false; S.hideOff = false;
   LS.set('ondes.last', s.id);
   $('player').hidden = false;
   load(); paintStation(); markTiles(); countClick(s);
@@ -904,9 +922,15 @@ function load(){
   setStatus(S.ever ? 'reconnect' : 'connecting');
   /* Lecteur branché sur l'égaliseur ou non : un lecteur déjà branché ne peut plus être débranché */
   const fx = fxWanted(c);
-  if (!!audio._fx !== fx) freshAudio();
-  if (fx && !audio._fx) fxAttach(audio);
   S.cu = c.u; S.loadWall = performance.now();
+  if (fx === 'pcm'){
+    if (audio._fx || audio.getAttribute('src')) freshAudio();
+    pcmStart(c); armWatch(15000); paintQuality();
+    return;
+  }
+  pcmStop();
+  if (!!audio._fx !== (fx === 'el')) freshAudio();
+  if (fx === 'el' && !audio._fx) fxAttach(audio);
   audio.src = c.u;
   const p = audio.play();
   if (p) p.catch(err => {
@@ -919,7 +943,7 @@ function load(){
 }
 function armWatch(ms){
   clearTimeout(S.watch);
-  S.watch = setTimeout(() => { if (S.want && (audio.paused || audio.readyState < 3)) onFail(); }, ms);
+  S.watch = setTimeout(() => { if (S.want && (PCM.on ? !PCM.live : audio.paused || audio.readyState < 3)) onFail(); }, ms);
 }
 function onFail(){
   clearTimeout(S.watch); clearTimeout(S.timer);
@@ -931,7 +955,7 @@ function onFail(){
     return;
   }
   /* Le serveur refuse l'analyse du son (CORS) : on rejoue le même flux, tel quel */
-  if (audio._fx && corsKnown(S.cu) !== true){ corsSet(S.cu, false); S.timer = setTimeout(load, 50); return; }
+  if (fxActive() && corsKnown(S.cu) !== true){ corsSet(S.cu, false); S.timer = setTimeout(load, 50); return; }
   if (!S.ever){
     S.ci++;
     if (S.ci >= S.cands.length) return giveUp();
@@ -944,7 +968,7 @@ function onFail(){
 }
 function giveUp(){
   S.want = false; S.reloading = false;
-  audio.removeAttribute('src'); audio.load();
+  pcmStop(); audio.removeAttribute('src'); audio.load();
   S.ci = 0; paintQuality();
   setStatus('dead');
   toast('Cette station ne répond pas en ce moment. Essaie une autre radio.');
@@ -952,7 +976,7 @@ function giveUp(){
 function pause(){
   S.want = false; S.reloading = false;
   clearTimeout(S.timer); clearTimeout(S.watch);
-  audio.pause();
+  pcmStop(); audio.pause();
   setStatus('paused');
 }
 function resume(){
@@ -1116,12 +1140,16 @@ document.addEventListener('visibilitychange', () => {
   tapSync();
   if (document.visibilityState === 'visible'){
     if (S.wakeOn && !S.wake && !$('drive').hidden) wakeOn();
-    if (S.want && audio.paused && !S.reloading) load();
+    if (S.hideOff){
+      /* Retour après verrouillage : on repasse sur le lecteur maison */
+      S.hideOff = false; S.fxOff = false;
+      if (S.want && fxWanted(S.cands[S.ci]) === 'pcm'){ S.reloading = true; load(); }
+    } else if (S.want && audio.paused && !S.reloading && !PCM.on) load();
     vizStart();
-  } else if (IS_IOS && audio._fx && S.want){
+  } else if (IS_IOS && fxActive() && S.want){
     /* iPhone : le traitement du son peut être suspendu écran verrouillé. On repasse en son direct
-       pour que la radio continue ; l'égaliseur revient à la prochaine radio choisie. */
-    S.fxOff = true; S.reloading = true; load();
+       pour que la radio continue ; l'égaliseur revient quand l'app repasse au premier plan. */
+    S.fxOff = true; S.hideOff = true; S.reloading = true; load();
   }
 });
 let tx = 0, ty = 0;
@@ -1158,6 +1186,7 @@ function buildEq(){
     };
     bands.appendChild(row);
   });
+  $('eqBoost').oninput = e => { EQ.boost = +e.target.value; eqChanged(); };
 }
 function setPreset(id){ EQ.p = id; eqChanged(); }
 function eqChanged(){ eqSave(); applyEq(); fxRefresh(); paintEq(); }
@@ -1169,16 +1198,20 @@ function paintEq(){
     if (+input.value !== g[i]) input.value = g[i];
     row.querySelector('b').textContent = fmtDb(g[i]);
   });
+  if (+$('eqBoost').value !== EQ.boost) $('eqBoost').value = EQ.boost;
+  $('eqBoostV').textContent = fmtDb(EQ.boost);
   paintEqNote();
 }
 function paintEqNote(){
   let t = '';
+  const c = S.cands[S.ci];
   if (!AC) t = 'Ton navigateur ne permet pas de régler le son.';
-  else if (!eqOn()) t = 'Choisis un préréglage ou déplace les curseurs.';
+  else if (!tuned()) t = 'Choisis un préréglage, déplace les curseurs ou renforce le volume.';
   else if (!S.current || !S.want) t = 'Lance une radio pour entendre le réglage.';
-  else if (audio._fx) t = 'Réglage appliqué à ' + S.current.name + '.';
+  else if (fxActive()) t = 'Réglage appliqué à ' + S.current.name + '.';
   else if (corsKnown(S.cu) === false) t = S.current.name + ' ne permet pas de modifier son son : il est joué tel quel.';
-  else if (S.cands[S.ci] && S.cands[S.ci].h) t = 'Version HLS de ' + S.current.name + ' : égaliseur indisponible (voir « Éviter les publicités de lancement » dans les réglages).';
+  else if (c && tapMode() && pcmBad(c.u)) t = 'Le format de ' + S.current.name + ' ne permet pas de modifier son son : il est joué tel quel.';
+  else if (c && c.h && !tapMode()) t = 'Version HLS de ' + S.current.name + ' : égaliseur indisponible.';
   else if (S.fxOff) t = 'Réglage en pause, il reviendra à la prochaine radio choisie.';
   $('eqNote').textContent = t;
 }
@@ -1198,7 +1231,7 @@ const FFT_WIN = Float32Array.from({ length: FFT_N }, (_, i) => 0.42 - 0.5 * Math
 const tapUrl = c => c ? c.u : '';
 function tapSync(){
   const c = S.cands[S.ci];
-  const want = tapMode() && S.anim && S.want && !!S.current && vizShown() && c && corsKnown(c.u) !== false;
+  const want = tapMode() && !PCM.on && S.anim && S.want && !!S.current && vizShown() && c && corsKnown(c.u) !== false;
   if (!want){ if (TAP.ctrl) tapStop(); return; }
   if (c.h || /\.m3u8(\?|$)/i.test(c.u)){ if (TAP.ctrl) tapStop(); TAP.why = 'flux HLS (découpé en fichiers) : analyse impossible pour cette radio' + (S.noPreroll ? ' (réglage « Éviter les publicités de lancement »)' : ''); return; }
   const url = tapUrl(c);
@@ -1321,6 +1354,248 @@ function fft(re, im){
   }
 }
 
+/* ---------- Lecteur maison ----------
+   Là où le lecteur habituel ne passe pas par Web Audio (iPhone), l'égaliseur et le volume n'auraient
+   aucun effet. Quand l'un d'eux est réglé, l'app lit donc la radio elle-même : elle télécharge le flux
+   (continu, ou segments HLS au format MPEG-TS), découpe les trames MP3 ou AAC, les décode par blocs et
+   les joue à la suite à travers l'égaliseur. Une seule connexion ; l'animation utilise ce même son.
+   Pour des raccords sans clic, chaque bloc est décodé avec quelques trames avant et après, retirées
+   ensuite : le décodeur a ainsi tout le contexte nécessaire aux bords. */
+const PCM_HEAD = 6, PCM_TAIL = 3;          /* trames de contexte avant et après chaque bloc */
+const PCM_START = 2.5, PCM_REBUF = 4;      /* secondes d'avance avant de jouer, puis après une coupure */
+const PCM = { on: false, ctrl: null, gen: 0, live: false, srcs: new Set(), q: Promise.resolve(), tick: 0,
+  sid: '', url: '', pend: new Uint8Array(0), frames: [], prev: [], tcum: 0, ready: [], readyDur: 0, base: 0, at: 0,
+  why: '', seen: 0, ok: 0, fails: 0, rec: null };
+/* Hôtes dont le format n'est pas lisible par le lecteur maison (ex. HLS en MP4), retenus 7 jours */
+const PCM_BAD = LS.get('ondes.pcmBad', {});
+const pcmBad = u => { const t = PCM_BAD[hostOf(u)]; return !!t && Date.now() - t < 7 * DAY; };
+function pcmBadSet(u){ PCM_BAD[hostOf(u)] = Date.now(); LS.set('ondes.pcmBad', PCM_BAD); }
+const decodeP = (ctx, buf) => new Promise((res, rej) => { const p = ctx.decodeAudioData(buf, res, rej); if (p && p.then) p.then(res, rej); });
+const pcmErr = (k, s) => ({ k, s });
+
+function pcmStart(c){
+  pcmStop();
+  const ctx = fxChain();
+  if (ctx.state !== 'running') ctx.resume().catch(() => {});
+  const ctrl = PCM.ctrl = new AbortController();
+  Object.assign(PCM, { on: true, live: false, sid: S.current ? S.current.id : '', url: c.u, pend: new Uint8Array(0), frames: [], prev: [],
+    tcum: 0, ready: [], readyDur: 0, base: 0, at: 0, why: 'connexion…', seen: 0, ok: 0, fails: 0, q: Promise.resolve() });
+  const hls = c.h || /\.m3u8(\?|$)/i.test(c.u);
+  (hls ? pcmHls : pcmStream)(c.u, ctrl)
+    .then(() => { if (PCM.ctrl === ctrl) pcmFail(pcmErr('end')); }, e => { if (PCM.ctrl === ctrl) pcmFail(e); });
+  PCM.tick = setInterval(pcmTick, 250);
+}
+function pcmStop(){
+  if (PCM.ctrl) PCM.ctrl.abort();
+  clearInterval(PCM.tick);
+  PCM.srcs.forEach(s => { try { s.onended = null; s.stop(); s.disconnect(); } catch {} });
+  PCM.srcs.clear();
+  Object.assign(PCM, { ctrl: null, on: false, live: false, ready: [], readyDur: 0, frames: [], prev: [], pend: new Uint8Array(0) });
+  PCM.gen++;
+}
+/* Échec : format illisible → lecteur habituel ; sinon reconnexion comme pour le lecteur habituel */
+function pcmFail(e){
+  if (!S.want || !PCM.on) return;
+  if (e && e.k === 'fmt'){
+    pcmBadSet(PCM.url); pcmStop();
+    clearTimeout(S.watch); S.reloading = true; S.timer = setTimeout(load, 50);
+    toast('Le format de cette radio ne permet pas de régler son son : lecture normale.');
+    return;
+  }
+  onFail();
+}
+async function pcmStream(url, ctrl){
+  const r = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
+  corsSet(url, true);   /* le serveur a répondu : il autorise la lecture par l'app */
+  if (!r.ok || !r.body) throw pcmErr('http', r.status);
+  /* Adresse sans « .m3u8 » qui mène en fait à du HLS */
+  if (/mpegurl/i.test(r.headers.get('content-type') || '')){ ctrl.signal.aborted || r.body.cancel().catch(() => {}); return pcmHls(url, ctrl); }
+  PCM.why = 'recherche des trames…';
+  const rd = r.body.getReader();
+  for (;;){
+    const { value, done } = await rd.read();
+    if (done || ctrl.signal.aborted) return;
+    pcmFeed(value);
+  }
+}
+/* HLS : on suit la liste de lecture et on télécharge chaque nouveau segment, en commençant trois
+   segments avant le direct (une dizaine de secondes d'avance contre les coupures de réseau) */
+async function pcmHls(url, ctrl){
+  const get = async u => { const r = await fetch(u, { signal: ctrl.signal, cache: 'no-store' }); corsSet(url, true); if (!r.ok) throw pcmErr('http', r.status); return r; };
+  let pl = url, next = -1;
+  while (!ctrl.signal.aborted){
+    const r = await get(pl);
+    const P = m3u8(await r.text(), r.url || pl);
+    if (P.vars.length){ pl = P.vars.sort((a, b) => b.bw - a.bw)[0].u; continue; }
+    if (P.key || P.map || !P.segs.length) throw pcmErr('fmt');
+    const last = P.seq + P.segs.length;
+    if (next < 0 || next < P.seq || next > last){ if (next >= 0) PCM.prev = []; next = Math.max(P.seq, last - 3); }
+    for (; next < last && !ctrl.signal.aborted; next++){
+      const es = hlsAudio(new Uint8Array(await (await get(P.segs[next - P.seq])).arrayBuffer()));
+      if (!es) throw pcmErr('fmt');
+      pcmFeed(es);
+    }
+    if (P.end) return;
+    await new Promise(res => setTimeout(res, Math.max(1000, P.td * 500)));
+  }
+}
+function m3u8(txt, base){
+  const P = { seq: 0, td: 4, segs: [], vars: [], end: false, key: false, map: false };
+  let inf = false, bw = 0;
+  for (const l of txt.split(/\r?\n/).map(s => s.trim())){
+    if (!l) continue;
+    if (l.startsWith('#EXT-X-MEDIA-SEQUENCE:')) P.seq = parseInt(l.slice(22), 10) || 0;
+    else if (l.startsWith('#EXT-X-TARGETDURATION:')) P.td = parseFloat(l.slice(22)) || 4;
+    else if (l.startsWith('#EXT-X-STREAM-INF:')){ inf = true; const m = l.match(/BANDWIDTH=(\d+)/); bw = m ? +m[1] : 0; }
+    else if (l.startsWith('#EXT-X-KEY:') && !/METHOD=NONE/.test(l)) P.key = true;
+    else if (l.startsWith('#EXT-X-MAP')) P.map = true;
+    else if (l === '#EXT-X-ENDLIST') P.end = true;
+    else if (l[0] !== '#'){
+      const u = new URL(l, base).href;
+      if (inf) P.vars.push({ u, bw }); else P.segs.push(u);
+      inf = false;
+    }
+  }
+  return P;
+}
+/* Piste audio d'un segment HLS : MPEG-TS (AAC ou MP3), ou audio brut précédé de tags ID3 ; null sinon */
+function hlsAudio(b){
+  if (b[0] === 0x47){
+    let pmt = -1, apid = -1;
+    const parts = [];
+    for (let i = 0; i + 188 <= b.length; i += 188){
+      if (b[i] !== 0x47) return null;
+      const pid = ((b[i + 1] & 0x1F) << 8) | b[i + 2], start = b[i + 1] & 0x40, afc = (b[i + 3] >> 4) & 3;
+      let p = i + 4;
+      if (afc & 2) p += 1 + b[p];
+      if (!(afc & 1) || p >= i + 188) continue;
+      if ((pid === 0 || pid === pmt) && start){
+        p += 1 + b[p];
+        const end = Math.min(i + 188, p + 3 + (((b[p + 1] & 0x0F) << 8) | b[p + 2]) - 4);
+        if (pid === 0){
+          for (let k = p + 8; k + 4 <= end; k += 4) if ((b[k] << 8 | b[k + 1]) !== 0){ pmt = ((b[k + 2] & 0x1F) << 8) | b[k + 3]; break; }
+        } else if (apid < 0){
+          for (let k = p + 12 + (((b[p + 10] & 0x0F) << 8) | b[p + 11]); k + 5 <= end; k += 5 + (((b[k + 3] & 0x0F) << 8) | b[k + 4])){
+            if ([0x0F, 0x03, 0x04].includes(b[k])){ apid = ((b[k + 1] & 0x1F) << 8) | b[k + 2]; break; }
+          }
+          if (apid < 0) return null;
+        }
+        continue;
+      }
+      if (pid !== apid) continue;
+      if (start){
+        if (b[p] !== 0 || b[p + 1] !== 0 || b[p + 2] !== 1) continue;
+        p += 9 + b[p + 8];
+      }
+      if (p < i + 188) parts.push(b.subarray(p, i + 188));
+    }
+    if (!parts.length) return null;
+    const out = new Uint8Array(parts.reduce((n, x) => n + x.length, 0));
+    let o = 0; for (const x of parts){ out.set(x, o); o += x.length; }
+    return out;
+  }
+  let p = 0;
+  while (b[p] === 0x49 && b[p + 1] === 0x44 && b[p + 2] === 0x33){
+    p += 10 + ((b[p + 6] & 0x7F) << 21 | (b[p + 7] & 0x7F) << 14 | (b[p + 8] & 0x7F) << 7 | (b[p + 9] & 0x7F)) + (b[p + 5] & 0x10 ? 10 : 0);
+  }
+  return frameAt(b, p) ? b.subarray(p) : null;
+}
+/* Découpe les trames (une trame n'est retenue que si la suivante commence juste après) */
+function pcmFeed(bytes){
+  PCM.seen += bytes.length;
+  let p = bytes;
+  if (PCM.pend.length){ p = new Uint8Array(PCM.pend.length + bytes.length); p.set(PCM.pend); p.set(bytes, PCM.pend.length); }
+  let i = 0;
+  while (i + 7 <= p.length){
+    const f = frameAt(p, i);
+    if (!f){ i++; continue; }
+    const j = i + f.len;
+    if (j + 7 > p.length) break;
+    if (!frameAt(p, j)){ i++; continue; }
+    PCM.frames.push({ b: p.subarray(i, j), d: f.dur });
+    i = j;
+  }
+  PCM.pend = p.slice(i);
+  if (PCM.pend.length > 1 << 19) throw pcmErr('fmt');
+  pcmPump();
+}
+/* Blocs de 0,4 à 4 s, toujours suivis de PCM_TAIL trames déjà reçues */
+function pcmPump(){
+  const F = PCM.frames;
+  for (;;){
+    let m = 0, d = 0;
+    while (m < F.length - PCM_TAIL && d < 4) d += F[m++].d;
+    if (d < 0.4) return;
+    const head = PCM.prev, mid = F.splice(0, m), look = F.slice(0, PCM_TAIL);
+    PCM.prev = head.concat(mid).slice(-PCM_HEAD);
+    pcmDecode(head, mid, look);
+  }
+}
+function pcmDecode(head, mid, look){
+  const dur = a => a.reduce((s, f) => s + f.d, 0);
+  const t0 = PCM.tcum, dm = dur(mid), dl = dur(look);
+  PCM.tcum += dm;
+  const all = head.concat(mid, look), bytes = new Uint8Array(all.reduce((n, f) => n + f.b.length, 0));
+  let o = 0; for (const f of all){ bytes.set(f.b, o); o += f.b.length; }
+  const gen = PCM.gen, ctx = FX.ctx;
+  PCM.q = PCM.q.then(() => decodeP(ctx, bytes.buffer)).then(buf => {
+    if (gen !== PCM.gen) return;
+    PCM.ok++; pcmPut(buf, t0, dm, dl);
+  }, () => {
+    if (gen !== PCM.gen) return;
+    PCM.fails++; pcmPut(null, t0, dm, dl);
+    if (!PCM.ok && PCM.fails >= 4) pcmFail(pcmErr('fmt'));
+  });
+}
+/* Garde la partie du bloc décodé qui correspond aux trames du milieu, calée sur la fin du décodage
+   (les décodeurs retirent parfois des échantillons en tête, jamais de façon variable d'un bloc à l'autre).
+   Les positions sont arrondies sur une frise commune : les blocs se suivent à l'échantillon près. */
+function pcmPut(buf, t0, dm, dl){
+  const ctx = FX.ctx, r = ctx.sampleRate, G = t => Math.round(t * r);
+  const n = G(t0 + dm) - G(t0);
+  if (n <= 0) return;
+  const out = ctx.createBuffer(2, n, r);
+  if (buf){
+    const st = buf.length - (G(t0 + dm + dl) - G(t0));
+    const a = Math.max(0, st), b = Math.min(buf.length, st + n);
+    for (let ch = 0; ch < 2 && b > a; ch++) out.getChannelData(ch).set(buf.getChannelData(Math.min(ch, buf.numberOfChannels - 1)).subarray(a, b), a - st);
+  }
+  if (PCM.rec) PCM.rec.push(out);
+  PCM.ready.push(out); PCM.readyDur += n / r;
+  PCM.why = 'lecture';
+  pcmSchedule();
+}
+function pcmSchedule(){
+  const ctx = FX.ctx, r = ctx.sampleRate;
+  if (!PCM.live){
+    if (PCM.readyDur < (S.ever ? PCM_REBUF : PCM_START)) return;
+    PCM.base = Math.ceil((ctx.currentTime + 0.1) * r) / r; PCM.at = 0; PCM.live = true;
+    pcmPlaying();
+  }
+  for (const b of PCM.ready){
+    const s = ctx.createBufferSource();
+    s.buffer = b; s.connect(FX.pre);
+    s.onended = () => { PCM.srcs.delete(s); try { s.disconnect(); } catch {} };
+    s.start(PCM.base + PCM.at / r);
+    PCM.at += b.length; PCM.srcs.add(s);
+  }
+  PCM.ready = []; PCM.readyDur = 0;
+}
+function pcmPlaying(){
+  clearTimeout(S.watch); S.reloading = false; S.retry = 0; S.ever = true; setStatus('live');
+  fxCheck();
+}
+/* Plus rien à jouer : on attend d'avoir de nouveau quelques secondes d'avance */
+function pcmTick(){
+  if (!PCM.on || !PCM.live) return;
+  if (FX.ctx.state !== 'running') return fxCheck();
+  if (FX.ctx.currentTime > PCM.base + PCM.at / FX.ctx.sampleRate - 0.03){
+    PCM.live = false; setStatus('buffering'); armWatch(15000);
+  }
+}
+const pcmLead = () => PCM.live ? PCM.base + PCM.at / FX.ctx.sampleRate - FX.ctx.currentTime : PCM.readyDur;
+const pcmInfo = () => `${PCM.why} · ${Math.round(PCM.seen / 1024)} Ko reçus · ${PCM.ok} blocs lus, ${PCM.fails} refusés · avance ${Math.max(0, pcmLead()).toFixed(1)} s`;
+
 /* ---------- Animation façon K2000 ----------
    Colonnes de diodes en miroir : basses au centre, aigus vers les bords. Elles ne suivent que le son réel :
    quand il ne peut pas être analysé (radio sans CORS), les diodes restent éteintes. */
@@ -1345,6 +1620,7 @@ function paintVizDiag(){
   if (!S.anim) t = 'Animation désactivée dans les réglages.';
   else if (!S.want || S.status !== 'live') t = 'En attente de la lecture.';
   else if (c && corsKnown(c.u) === false) t = 'Cette radio interdit l\'analyse de son son.';
+  else if (PCM.on) t = 'Lecteur maison : ' + pcmInfo();
   else if (!tapMode()) t = 'Analyse directe : ' + (audio._fx ? 'active' : 'non branchée') + '.';
   else t = `Écoute séparée : ${TAP.why || 'arrêtée'} · ${Math.round((TAP.seen || 0) / 1024)} Ko reçus · ${TAP.ok} morceaux lus, ${TAP.fails} refusés · reçu ${(TAP.total / TAP_SR).toFixed(1)} s, entendu ${(TAP.heard || 0).toFixed(1)} s`;
   $('vizDiag').textContent = t;
@@ -1354,6 +1630,12 @@ $('dViz').addEventListener('click', () => { $('vizDiag').hidden = !$('vizDiag').
 /* Spectre du son entendu : analyseur Web Audio, ou écoute séparée (iPhone) */
 function vizSpectrum(){
   if (!(S.want && S.status === 'live')) return null;
+  /* Lecteur maison : le son passe par Web Audio, l'analyseur le reçoit directement */
+  if (PCM.on){
+    if (!PCM.live || !FX.an) return null;
+    FX.an.getByteFrequencyData(FX.data);
+    return { data: FX.data, binHz: FX.ctx.sampleRate / FX.an.fftSize };
+  }
   if (tapMode()) return tapSpectrum();
   if (!(audio._fx && FX.an && FX.ctx.state === 'running')) return null;
   FX.an.getByteFrequencyData(FX.data);
@@ -1469,7 +1751,7 @@ if ('serviceWorker' in navigator){
   navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
   if (window.caches) caches.keys().then(ks => ks.filter(k => k.startsWith('ondes-v')).forEach(k => caches.delete(k))).catch(() => {});
 }
-window.__ondes = { S, processRaw, FX, EQ, VIZ, TAP, audio: () => audio, tapSpectrum, candidates, framesSpan, frameAt, play, openDrive };
+window.__ondes = { S, processRaw, FX, EQ, VIZ, TAP, PCM, fxWanted, hlsAudio, audio: () => audio, tapSpectrum, candidates, framesSpan, frameAt, play, openDrive };
 })();
 </script>
 </body>

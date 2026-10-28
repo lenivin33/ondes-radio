@@ -82,18 +82,15 @@ header>*{min-width:0}
 main{padding-block:8px calc(120px + var(--sab))}
 .meta-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 12px;min-height:20px}
 .meta{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
-.link-btn{font-size:14px;font-weight:600;color:var(--accent-text);padding:6px 0}
-/* Réorganisation des favoris : glisser un logo, ou flèches */
-.grid.reorder .tile{touch-action:none;cursor:grab;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-.grid.reorder .tmain{pointer-events:none}
-.grid.reorder .logo{outline:2px dashed var(--line);outline-offset:2px}
+.grid.favs .tile{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.grid.favs .logo img{pointer-events:none;-webkit-user-drag:none}
+/* Réorganisation des favoris : appui long de 2 s, puis glisser */
+.tile.pressing .logo{transform:scale(.92);transition:transform 2s linear}
+.grid.reorder .tile{touch-action:none;cursor:grabbing}
+.grid.reorder .logo{outline:2px dashed var(--muted);outline-offset:3px}
 .grid.reorder .tfav{display:none}
-.tmove{display:none}
-.grid.reorder .tmove{display:flex;justify-content:space-between}
-.tmove button{width:40px;height:32px;border-radius:10px;background:var(--surface-2);display:grid;place-items:center}
-.tmove button:disabled{opacity:.3}
-.tmove svg{width:18px;height:18px}
-.tile.dragging{opacity:.55;transform:scale(1.06);z-index:5}
+.tile.dragging{transform:scale(1.08);z-index:5;filter:drop-shadow(0 10px 18px rgba(0,0,0,.45))}
+.tile.dragging .logo{outline-color:var(--accent)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(96px,100%),1fr));gap:14px 12px}
 .tile{position:relative;display:flex;flex-direction:column;gap:6px;min-width:0}
 .tmain{display:flex;flex-direction:column;gap:7px;text-align:left;min-width:0}
@@ -247,8 +244,6 @@ main{padding-block:8px calc(120px + var(--sab))}
     <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 2.8 14 5l3-.4.7 3 2.6 1.6-1 2.8 1 2.8-2.6 1.6-.7 3-3-.4-2 2.2-2-2.2-3 .4-.7-3L3.7 14.8l1-2.8-1-2.8 2.6-1.6.7-3 3 .4Z"/></symbol>
     <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
-    <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-eq" viewBox="0 0 24 24"><path d="M6 4v16M12 4v16M18 4v16" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".45"/><rect x="3.5" y="13" width="5" height="3.2" rx="1.6" fill="currentColor"/><rect x="9.5" y="6.5" width="5" height="3.2" rx="1.6" fill="currentColor"/><rect x="15.5" y="10.5" width="5" height="3.2" rx="1.6" fill="currentColor"/></symbol>
     <symbol id="i-car" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M4 16v-4l2-5h12l2 5v4M4 16h16v2H4zM4 12h16"/><circle cx="8" cy="14" r="1" fill="currentColor"/><circle cx="16" cy="14" r="1" fill="currentColor"/></symbol>
   </defs>
@@ -278,7 +273,7 @@ main{padding-block:8px calc(120px + var(--sab))}
 </header>
 
 <main class="wrap">
-  <div class="meta-row"><div class="meta" id="meta"></div><button class="link-btn" id="favOrder" hidden>Réorganiser</button></div>
+  <div class="meta-row"><div class="meta" id="meta"></div></div>
   <div class="grid" id="grid"></div>
   <div id="sentinel" style="height:1px"></div>
 </main>
@@ -558,14 +553,9 @@ function render(keep){
     const g = $('goAll'); if (g) g.onclick = () => { S.filter = 'all'; buildChips(); render(); };
   }
   $('meta').textContent = n ? (n === 1 ? '1 radio' : fmt(n) + ' radios') + (S.filter === 'fav' ? ' en favoris' : '') : '';
-  /* Réorganiser : seulement sur la liste complète des favoris */
-  const canOrder = S.filter === 'fav' && !S.q && !S.region && n > 1;
-  if (!canOrder) S.reorder = false;
-  $('favOrder').hidden = !canOrder;
-  $('favOrder').textContent = S.reorder ? 'Terminé' : 'Réorganiser';
-  grid.classList.toggle('reorder', !!S.reorder);
+  if (canOrder()) $('meta').textContent += ' · appui long sur une radio pour la déplacer';
+  grid.classList.toggle('favs', canOrder());
   renderMore(Math.max(48, shown));
-  if (S.reorder) favArrows();
   if (keep) window.scrollTo(0, y);
 }
 const sentinel = $('sentinel');
@@ -585,9 +575,7 @@ function tile(s){
   d.className = 'tile' + (S.current && S.current.id === s.id ? ' on' : ''); d.dataset.id = s.id;
   const fav = S.favs.includes(s.id);
   d.innerHTML = `<button class="tmain"><span class="logo"></span><span class="tname"></span></button>
-    <button class="tfav${fav ? ' is' : ''}" aria-label="${fav ? 'Retirer des favoris' : 'Ajouter aux favoris'}"><svg><use href="#i-heart${fav ? '-f' : ''}"/></svg></button>
-    <span class="tmove"><button data-d="-1" aria-label="Avancer"><svg><use href="#i-left"/></svg></button><button data-d="1" aria-label="Reculer"><svg><use href="#i-right"/></svg></button></span>`;
-  d.querySelectorAll('.tmove button').forEach(b => b.onclick = e => { e.stopPropagation(); favMove(d, +b.dataset.d); });
+    <button class="tfav${fav ? ' is' : ''}" aria-label="${fav ? 'Retirer des favoris' : 'Ajouter aux favoris'}"><svg><use href="#i-heart${fav ? '-f' : ''}"/></svg></button>`;
   d.querySelector('.tname').textContent = s.name;
   d.querySelector('.tmain').setAttribute('aria-label', 'Écouter ' + s.name);
   logoInto(d.querySelector('.logo'), s, true);
@@ -694,35 +682,35 @@ function toggleFav(s){
   updateFavBtn();
 }
 /* ---------- Ordre des favoris ----------
-   Le bouton « Réorganiser » de la vue Favoris permet de glisser les logos (doigt ou souris) ou d'utiliser
-   les flèches. L'ordre est enregistré comme le reste des favoris (fusion entre fenêtres, copie de secours). */
+   Vue Favoris : appui long de 2 s sur une radio (le logo rétrécit doucement pendant l'attente), puis on la
+   fait glisser à la place voulue sans lever le doigt. L'ordre est enregistré comme le reste des favoris. */
+const LONG_PRESS = 2000;
+function canOrder(){ return S.filter === 'fav' && !S.q && !S.region && S.list.length > 1; }
 function favSaveOrder(){
   const ids = [...grid.querySelectorAll('.tile')].map(t => t.dataset.id), now = Date.now();
   ids.forEach((id, i) => { const it = S.fav.items[id]; if (it) S.fav.items[id] = { ...it, a: i + 1, t: now }; });
   favSave(); S.list = favList();
-  favArrows();
 }
-/* Flèches : désactivées aux extrémités */
-function favArrows(){
-  const tiles = [...grid.querySelectorAll('.tile')];
-  tiles.forEach((t, i) => { const [l, r] = t.querySelectorAll('.tmove button'); l.disabled = i === 0; r.disabled = i === tiles.length - 1; });
-}
-function favMove(el, d){
-  const sib = d < 0 ? el.previousElementSibling : el.nextElementSibling;
-  if (!sib) return;
-  if (d < 0) grid.insertBefore(el, sib); else grid.insertBefore(sib, el);
-  favSaveOrder();
-}
-$('favOrder').onclick = () => { S.reorder = !S.reorder; render(true); if (S.reorder) favArrows(); };
-let drag = null;
+let press = null, drag = null, swallowClick = false;
+function cancelPress(){ if (!press) return; clearTimeout(press.timer); press.el.classList.remove('pressing'); press = null; }
 grid.addEventListener('pointerdown', e => {
-  if (!S.reorder || e.target.closest('.tmove')) return;
-  const el = e.target.closest('.tile'); if (!el) return;
-  drag = { el, id: e.pointerId, moved: false };
-  el.classList.add('dragging');
-  try { grid.setPointerCapture(e.pointerId); } catch {}
+  if (!canOrder() || e.button > 0 || drag) return;
+  const el = e.target.closest('.tile'); if (!el || e.target.closest('.tfav')) return;
+  cancelPress();
+  press = { el, id: e.pointerId, x: e.clientX, y: e.clientY, timer: setTimeout(startDrag, LONG_PRESS) };
+  el.classList.add('pressing');
 });
+function startDrag(){
+  const { el, id } = press; press = null;
+  el.classList.remove('pressing');
+  drag = { el, id, moved: false };
+  grid.classList.add('reorder'); el.classList.add('dragging');
+  try { grid.setPointerCapture(id); } catch {}
+  try { navigator.vibrate && navigator.vibrate(30); } catch {}
+  swallowClick = true;
+}
 grid.addEventListener('pointermove', e => {
+  if (press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) cancelPress();
   if (!drag || e.pointerId !== drag.id) return;
   e.preventDefault();
   /* Défilement automatique près des bords de l'écran */
@@ -734,14 +722,20 @@ grid.addEventListener('pointermove', e => {
   grid.insertBefore(drag.el, e.clientX < r.left + r.width / 2 ? target : target.nextSibling);
   drag.moved = true;
 });
-const dragEnd = e => {
+const pressEnd = e => {
+  if (press && e.pointerId === press.id) cancelPress();
   if (!drag || e.pointerId !== drag.id) return;
-  drag.el.classList.remove('dragging');
+  drag.el.classList.remove('dragging'); grid.classList.remove('reorder');
   if (drag.moved) favSaveOrder();
   drag = null;
+  setTimeout(() => { swallowClick = false; }, 400);
 };
-grid.addEventListener('pointerup', dragEnd);
-grid.addEventListener('pointercancel', dragEnd);
+grid.addEventListener('pointerup', pressEnd);
+grid.addEventListener('pointercancel', pressEnd);
+/* Pendant le glisser : pas de défilement de la page (iPhone), pas de lecture au lâcher, pas de menu */
+grid.addEventListener('touchmove', e => { if (drag) e.preventDefault(); }, { passive: false });
+grid.addEventListener('click', e => { if (swallowClick){ e.stopPropagation(); e.preventDefault(); swallowClick = false; } }, true);
+grid.addEventListener('contextmenu', e => { if (canOrder() && e.target.closest('.tile')) e.preventDefault(); });
 
 function updateFavBtn(){
   const on = S.current && S.favs.includes(S.current.id);
